@@ -74,6 +74,35 @@ Mi 2027-03-03  FRA-JFK   ·                   ○70k 1P M&M? +1     ·
 
 `●` nonstop, `○` mit Umstieg, `P` freie Plätze, `+1` heißt: ein weiteres Programm hat ebenfalls Verfügbarkeit.
 
+### Buchungsfenster: Wann öffnet mein Reisedatum?
+
+Business- und First-Plätze sind oft **direkt am ersten Buchungstag** am besten verfügbar. Der Befehl `window` rechnet für
+jedes Programm aus, ab wann ein Abflugdatum buchbar ist. Mit `--ics` werden die Termine als Kalenderdatei gespeichert
+(Erinnerung um 7 Uhr am Öffnungstag). Die Datei lässt sich in Google, Apple oder Outlook importieren.
+
+```bash
+award-finder window 2027-10-15 2027-10-29 --label "Tokio" --ics tokio.ics
+```
+
+```
+Abflug Fr 15.10.2027
+  Miles & More             Fenster 360 T.  öffnet 20.10.2026  bereits buchbar
+  Air Canada Aeroplan      Fenster 355 T.  öffnet 25.10.2026  bereits buchbar
+  United MileagePlus       Fenster 337 T.  öffnet 12.11.2026  öffnet in 4 Tagen
+```
+
+| Programm | Buchungsfenster (Richtwert) |
+|---|---|
+| Miles & More | ca. 360 Tage |
+| Aeroplan, Turkish, KrisFlyer | ca. 355 Tage |
+| United | ca. 337 Tage |
+
+Die Programme ändern diese Werte gelegentlich. Anpassen lassen sie sich in `award_finder/alliance.py` (`window_days`).
+`search` weist zusätzlich darauf hin, wenn der Suchzeitraum über das Fenster eines Programms hinausgeht.
+
+**Tipp:** Am Öffnungstag `award-finder search … --from <Reisedatum> --to <Reisedatum>` laufen lassen. Alternativ das Datum
+in `watch.json` eintragen und den cron-Job an diesen Tagen häufiger laufen lassen.
+
 ### Alarm bei neuer Verfügbarkeit
 
 Die Suchen kommen in eine JSON-Datei (Vorlage: `watch.example.json`). Den Check dann per cron laufen lassen.

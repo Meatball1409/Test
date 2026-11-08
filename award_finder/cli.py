@@ -13,7 +13,8 @@ from pathlib import Path
 from .alliance import DEFAULT_SOURCES, MM_STATUS_LABEL, PROGRAMS
 from .api import SeatsAeroClient, SeatsAeroError
 from .core import Filters, Offer, apply_filters, offers_from_availability, parse_cabins, sort_key, trips_from_response
-from .render import render_calendar, render_html, render_list, render_trips
+from .render import render_calendar, render_html, render_list, render_trips, weekday
+from .window import bookable_until, openings, to_ics
 
 
 def _client(args) -> SeatsAeroClient:
@@ -73,6 +74,15 @@ def cmd_search(args) -> int:
     start, end = _date_range(args)
     filters = _filters(args)
     sources = _sources(args.programs)
+    today = date.today()
+    for src in sources or []:
+        limit = bookable_until(src, today)
+        if limit and end > limit.isoformat():
+            print(
+                f"Hinweis: {PROGRAMS[src].name} ist erst bis ca. {limit.isoformat()} buchbar – "
+                f"spätere Daten liefern dort noch nichts (siehe 'award-finder window').",
+                file=sys.stderr,
+            )
     legs = [(args.origin, args.destination)]
     if args.roundtrip:
         legs.append((args.destination, args.origin))
@@ -180,10 +190,35 @@ def cmd_watch(args) -> int:
     return 0 if total_new == 0 else 10
 
 
+def cmd_window(args) -> int:
+    today = date.fromisoformat(args.today) if args.today else date.today()
+    try:
+        dates = sorted({date.fromisoformat(d) for d in args.dates})
+    except ValueError as e:
+        raise ValueError(f"Datum bitte als YYYY-MM-DD angeben ({e})") from e
+    items = openings(dates, _sources(args.programs) or None)
+    for td in dates:
+        print(f"\nAbflug {weekday(td.isoformat())} {td:%d.%m.%Y}")
+        for o in [i for i in items if i.travel_date == td]:
+            opens = f"{o.opens:%d.%m.%Y}" if o.opens else "?"
+            win = f"{o.window_days} T." if o.window_days else "?"
+            print(f"  {o.program:<24} Fenster {win:<7} öffnet {opens:<11} {o.status(today)}")
+    upcoming = [o for o in items if o.opens and o.opens >= today]
+    if upcoming:
+        first = min(upcoming, key=lambda o: o.opens)
+        print(f"\nNächster Termin: {first.opens:%d.%m.%Y} ({first.program}, Abflug {first.travel_date:%d.%m.%Y})")
+    if args.ics:
+        Path(args.ics).write_text(to_ics(upcoming, args.label or ""), encoding="utf-8", newline="")
+        print(f"Kalenderdatei mit {len(upcoming)} Terminen: {args.ics}", file=sys.stderr)
+    print("\nRichtwerte – die Programme ändern ihre Fenster gelegentlich (award_finder/alliance.py).", file=sys.stderr)
+    return 0
+
+
 def cmd_programs(args) -> int:
     for p in PROGRAMS.values():
         kind = {"mm": "M&M direkt", "partner": "Partner-Saver", "own": "Eigen-Kontingent"}[p.kind]
-        print(f"{p.key:<13} {p.name:<24} {kind:<17} {p.note}")
+        win = f"{p.window_days} T." if p.window_days else "?"
+        print(f"{p.key:<13} {p.name:<24} {kind:<17} {win:<7} {p.note}")
     print("\nStandard: alle oben (--programs star). Mit --programs alle werden alle seats.aero-Programme abgefragt.")
     return 0
 
@@ -220,6 +255,14 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--state", default=".award-finder-state.json", help="Datei für bereits gemeldete Treffer")
     w.add_argument("--ntfy", help="ntfy.sh-URL für Push-Benachrichtigungen, z. B. https://ntfy.sh/mein-topic")
     w.set_defaults(func=cmd_watch)
+
+    wn = sub.add_parser("window", help="Wann öffnet das Buchungsfenster für ein Reisedatum?")
+    wn.add_argument("dates", nargs="+", help="Abflugdatum/-daten YYYY-MM-DD (z. B. Hin- und Rückflug)")
+    wn.add_argument("-p", "--programs", help="Programme (Standard: star)")
+    wn.add_argument("--ics", metavar="DATEI", help="Termine als Kalenderdatei (.ics) mit Erinnerung speichern")
+    wn.add_argument("--label", help="Name der Reise für die Kalendereinträge, z. B. 'Tokio'")
+    wn.add_argument("--today", help=argparse.SUPPRESS)
+    wn.set_defaults(func=cmd_window)
 
     p = sub.add_parser("programs", help="Unterstützte Vielfliegerprogramme anzeigen")
     p.set_defaults(func=cmd_programs)

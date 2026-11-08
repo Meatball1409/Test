@@ -59,16 +59,19 @@ class Program:
     # "own"     -> zeigt v. a. Kontingent für eigene Mitglieder (nur Indiz für M&M)
     kind: str
     note: str = ""
+    # Buchungsfenster in Tagen vor Abflug (Richtwert, None = unbekannt).
+    # Die Programme ändern das gelegentlich – bei Bedarf hier anpassen.
+    window_days: int | None = None
 
 
 PROGRAMS: dict[str, Program] = {
     p.key: p
     for p in [
-        Program("lufthansa", "Miles & More", "mm", "Direkt bei M&M buchbar"),
-        Program("united", "United MileagePlus", "partner", "Gutes Indiz für Partner-Saver (X/I/O)"),
-        Program("aeroplan", "Air Canada Aeroplan", "partner", "Gutes Indiz für Partner-Saver"),
-        Program("turkish", "Turkish Miles&Smiles", "own", "TK zeigt teils Eigen-Kontingent"),
-        Program("singapore", "Singapore KrisFlyer", "own", "SQ gibt Partnern weniger frei"),
+        Program("lufthansa", "Miles & More", "mm", "Direkt bei M&M buchbar", window_days=360),
+        Program("united", "United MileagePlus", "partner", "Gutes Indiz für Partner-Saver (X/I/O)", window_days=337),
+        Program("aeroplan", "Air Canada Aeroplan", "partner", "Gutes Indiz für Partner-Saver", window_days=355),
+        Program("turkish", "Turkish Miles&Smiles", "own", "TK zeigt teils Eigen-Kontingent", window_days=355),
+        Program("singapore", "Singapore KrisFlyer", "own", "SQ gibt Partnern weniger frei", window_days=355),
         Program("ethiopian", "Ethiopian ShebaMiles", "partner", ""),
         Program("connectmiles", "Copa ConnectMiles", "partner", ""),
     ]

@@ -11,6 +11,8 @@ from award_finder import cli
 from award_finder.alliance import mm_status
 from award_finder.api import SeatsAeroClient
 from award_finder.core import Filters, apply_filters, best_by_cell, offers_from_availability, parse_cabins, trips_from_response
+from award_finder.window import bookable_until, openings, to_ics
+from datetime import date
 from award_finder.render import render_calendar, render_html, render_trips
 
 
@@ -122,6 +124,41 @@ class CoreTests(unittest.TestCase):
         self.assertIn("T&lt;est&gt;", page)
         self.assertIn('class="direct"', page)
         self.assertIn("prefers-color-scheme", page)
+
+
+class WindowTests(unittest.TestCase):
+    def test_openings(self):
+        items = openings([date(2027, 10, 15)], ["lufthansa", "united", "ethiopian"])
+        by = {o.source: o for o in items}
+        self.assertEqual(by["lufthansa"].opens, date(2026, 10, 20))
+        self.assertEqual(by["united"].opens, date(2026, 11, 12))
+        self.assertIsNone(by["ethiopian"].opens)
+        today = date(2026, 11, 8)
+        self.assertEqual(by["lufthansa"].status(today), "bereits buchbar")
+        self.assertEqual(by["united"].status(today), "öffnet in 4 Tagen")
+        self.assertEqual(by["united"].status(date(2026, 11, 12)), "öffnet HEUTE")
+        self.assertEqual(bookable_until("lufthansa", today), date(2027, 11, 3))
+
+    def test_ics(self):
+        items = openings([date(2027, 10, 15)], ["united", "ethiopian"])
+        ics = to_ics(items, "Tokio, Japan")
+        self.assertEqual(ics.count("BEGIN:VEVENT"), 1)
+        self.assertIn("DTSTART;VALUE=DATE:20261112", ics)
+        self.assertIn("UID:united-20271015-Tokio-Japan@award-finder", ics)
+        self.assertIn("Tokio\\, Japan", ics)
+        self.assertTrue(ics.endswith("END:VCALENDAR\r\n"))
+
+    def test_cli_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "x.ics")
+            buf = io.StringIO()
+            with redirect_stdout(buf), mock.patch("sys.stderr", io.StringIO()):
+                rc = cli.main(["window", "2027-10-15", "--today", "2026-11-08", "--ics", path])
+            self.assertEqual(rc, 0)
+            self.assertIn("öffnet in 4 Tagen", buf.getvalue())
+            self.assertIn("Nächster Termin: 12.11.2026", buf.getvalue())
+            with open(path, newline="") as f:
+                self.assertIn("\r\n", f.read())
 
 
 class ApiTests(unittest.TestCase):
