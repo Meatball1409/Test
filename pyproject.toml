@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "award-finder"
+version = "0.1.0"
+description = "Prämienflug-Verfügbarkeit für Miles & More und Star-Alliance-Partner (via seats.aero)"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+award-finder = "award_finder.cli:main"
+
+[tool.setuptools]
+packages = ["award_finder"]

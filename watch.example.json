@@ -1,0 +1,25 @@
+{
+  "ntfy": "https://ntfy.sh/DEIN-GEHEIMES-TOPIC",
+  "searches": [
+    {
+      "name": "FRA/MUC -> Tokio, Business/First, Frühjahr",
+      "origin": "FRA,MUC",
+      "destination": "HND,NRT",
+      "from": "2027-03-01",
+      "to": "2027-04-30",
+      "cabins": "J,F",
+      "seats": 2,
+      "mm_only": true
+    },
+    {
+      "name": "Europa -> New York, nonstop Business",
+      "origin": "FRA,MUC,ZRH,VIE",
+      "destination": "JFK,EWR",
+      "from": "2027-05-01",
+      "to": "2027-06-30",
+      "cabins": "J",
+      "nonstop": true,
+      "max_miles": 120000
+    }
+  ]
+}
