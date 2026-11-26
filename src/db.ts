@@ -33,17 +33,32 @@ class TechDeskDB extends Dexie {
 
 export const db = new TechDeskDB();
 
+/**
+ * Wird die Datenbank auf eine neue Version umgestellt, müssen alle offenen Tabs loslassen.
+ * - Alte Tabs: Verbindung schließen und neu laden (holt die neue App-Version).
+ * - Dieser Tab: Wenn ein anderer Tab blockiert, Hinweis anzeigen statt still zu hängen.
+ */
+db.on('versionchange', () => {
+  db.close();
+  if (document.visibilityState === 'visible') location.reload();
+  else document.addEventListener('visibilitychange', () => location.reload(), { once: true });
+  return false;
+});
+db.on('blocked', () => {
+  window.dispatchEvent(new CustomEvent('techdesk-storage', { detail: 'blocked' }));
+});
+
 /** Prüft beim Start, ob der Gerätespeicher funktioniert (Schreiben + Lesen) */
-export async function storageSelfTest(): Promise<string | null> {
-  try {
+export const BLOCKED_MSG = 'blockiert – ein anderer TechDesk-Tab oder die installierte App ist noch offen';
+export async function storageSelfTest(timeoutMs = 5000): Promise<string | null> {
+  const test = (async () => {
     await db.open();
     await db.meta.put({ key: '__selftest', value: Date.now() });
     await db.meta.delete('__selftest');
     return null;
-  } catch (e) {
-    const err = e as Error;
-    return `${err.name}: ${err.message}`;
-  }
+  })().catch((e: Error) => `${e.name}: ${e.message}`);
+  const timeout = new Promise<string>((r) => setTimeout(() => r(BLOCKED_MSG), timeoutMs));
+  return Promise.race([test, timeout]);
 }
 
 export function useSettings(): Settings {

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Logo } from './brand';
-import { storageSelfTest } from './db';
+import { BLOCKED_MSG, storageSelfTest } from './db';
 import { Icon, type IconName } from './icons';
 import Home from './pages/Home';
 import CalendarPage from './pages/Calendar';
@@ -35,7 +35,16 @@ export default function App() {
     return () => window.removeEventListener('hashchange', h);
   }, []);
   const [storageError, setStorageError] = useState<string | null>(null);
-  useEffect(() => { void storageSelfTest().then(setStorageError); }, []);
+  useEffect(() => {
+    void storageSelfTest().then(setStorageError);
+    const h = () => setStorageError(BLOCKED_MSG);
+    window.addEventListener('techdesk-storage', h);
+    // sobald der andere Tab losgelassen hat, verschwindet der Hinweis von selbst
+    const t = window.setInterval(() => { if (storageErrorRef.current) void storageSelfTest().then((r) => setStorageError(r)); }, 4000);
+    return () => { window.removeEventListener('techdesk-storage', h); window.clearInterval(t); };
+  }, []);
+  const storageErrorRef = useRef<string | null>(null);
+  storageErrorRef.current = storageError;
   const R = ROUTES.find((r) => r.id === route) ?? ROUTES[0];
   return (
     <div className="shell">
@@ -58,12 +67,18 @@ export default function App() {
         ))}
       </nav>
       <main className="main">
-        {storageError && (
+        {storageError && (storageError === BLOCKED_MSG ? (
+          <div className="result bad" role="alert" style={{ marginBottom: '1rem' }}>
+            <b>Speichern gerade nicht möglich – TechDesk ist noch in einem anderen Tab offen.</b><br />
+            Die App wurde aktualisiert und muss ihren Speicher einmal umstellen. Bitte <b>alle anderen TechDesk-Tabs in Safari schließen</b> (Tab-Übersicht → ✕) und die installierte App, falls offen, nach oben wegwischen. Danach geht es hier automatisch weiter.
+            <div style={{ marginTop: '.5rem' }}><button className="btn small" onClick={() => location.reload()}>Neu laden</button></div>
+          </div>
+        ) : (
           <div className="result bad" role="alert" style={{ marginBottom: '1rem' }}>
             <b>Speichern auf diesem Gerät nicht möglich.</b> Mögliche Ursachen: privater Modus in Safari, Speicher voll oder „Alle Cookies blockieren“ (Einstellungen → Safari). Fehler: {storageError}
             <div style={{ marginTop: '.5rem' }}><button className="btn small" onClick={() => location.reload()}>App neu laden</button></div>
           </div>
-        )}
+        ))}
         <R.C key={location.hash} />
       </main>
     </div>

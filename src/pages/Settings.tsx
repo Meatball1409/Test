@@ -14,7 +14,11 @@ export default function SettingsPage() {
   const s = useSettings();
   const toast = useToast();
   const [storage, setStorage] = useState<string | null>(null);
-  useEffect(() => { void storageSelfTest().then((r) => setStorage(r ?? 'ok')); }, []);
+  useEffect(() => {
+    void storageSelfTest().then((r) => setStorage(r ?? 'ok'));
+    const t = window.setInterval(() => void storageSelfTest().then((r) => setStorage(r ?? 'ok')), 5000);
+    return () => window.clearInterval(t);
+  }, []);
   const num = (k: keyof typeof s) => (e: React.ChangeEvent<HTMLInputElement>) => saveSettings({ [k]: Number(e.target.value) });
 
   async function uploadLogo() {
