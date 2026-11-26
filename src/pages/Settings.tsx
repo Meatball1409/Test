@@ -1,3 +1,4 @@
+import { Logo } from '../brand';
 import { download, Field, PageHeader, pickFile, useToast } from '../components';
 import { db, exportAll, importAll, saveSettings, useSettings } from '../db';
 import { todayISO } from '../lib/dates';
@@ -73,8 +74,8 @@ export default function SettingsPage() {
             <Field label="Firmenname (Wortmarke)"><input value={s.companyName} onChange={(e) => saveSettings({ companyName: e.target.value })} /></Field>
             <Field label="Logo">
               <div className="row">
-                {s.logoDataUrl && <img src={s.logoDataUrl} alt="Logo" style={{ height: 28 }} />}
-                <button className="btn" onClick={uploadLogo}>{s.logoDataUrl ? 'Ändern' : 'Logo hochladen'}</button>
+                <Logo height={28} />
+                <button className="btn" onClick={uploadLogo}>{s.logoDataUrl ? 'Ändern' : 'Eigenes Logo'}</button>
                 {s.logoDataUrl && <button className="btn ghost" onClick={() => saveSettings({ logoDataUrl: undefined })}>Entfernen</button>}
               </div>
             </Field>

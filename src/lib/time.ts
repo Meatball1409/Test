@@ -1,4 +1,4 @@
-import { eachDay, timeToMinutes, weekday } from './dates';
+import { addDays, eachDay, timeToMinutes, weekday } from './dates';
 import { holidayName } from './holidays';
 import type { Settings, TimeEntry } from './types';
 
@@ -129,4 +129,9 @@ export function overtimeBalance(until: string, all: TimeEntry[], s: Settings): n
 export function vacationUsed(year: number, all: TimeEntry[], s: Settings): number {
   const days = new Set(all.filter((e) => e.kind === 'urlaub' && e.date.startsWith(String(year)) && isWorkday(e.date, s)).map((e) => e.date));
   return days.size;
+}
+
+/** Stichtag für Salden: heute nur, wenn schon etwas eingetragen ist – sonst bis gestern (der Tag läuft noch). */
+export function balanceDate(today: string, all: TimeEntry[]): string {
+  return all.some((e) => e.date === today) ? today : addDays(today, -1);
 }

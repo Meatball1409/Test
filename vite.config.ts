@@ -20,7 +20,15 @@ export default defineConfig({
         start_url: './',
         icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
       },
-      workbox: { globPatterns: ['**/*.{js,css,html,svg}'], maximumFileSizeToCacheInBytes: 5_000_000 },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png}'],
+        maximumFileSizeToCacheInBytes: 5_000_000,
+        runtimeCaching: [{
+          urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/,
+          handler: 'CacheFirst',
+          options: { cacheName: 'fonts', expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+        }],
+      },
     }),
   ],
   test: { environment: 'node' },

@@ -44,6 +44,17 @@ src/pages/    Seiten: Home, Calendar, Time, Reports, Snippets, Trips, Settings
 src/db.ts     Lokale Datenbank, Backup/Restore
 ```
 
+## Logo einbinden
+
+Das offizielle Logo wird automatisch in App, Kunden-PDF und PowerPoint verwendet, sobald die Datei
+`src/assets/multivac_logo.png` existiert. Ohne Datei erscheint der Schriftzug aus den Einstellungen.
+
+```bash
+python3 scripts/prepare_logo.py pfad/zum/logo.png   # macht Weiß transparent, schneidet zu, speichert die Datei
+```
+
+Alternativ kann jeder Nutzer in den Einstellungen ein eigenes Logo hochladen (hat Vorrang).
+
 ## Wichtige Hinweise
 
 - **Arbeitszeit-Regeln** (Reisezeit-Anrechnung, Bereitschaft, Pausen) sind in den Einstellungen anpassbar –

@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { navigate, routeParam } from '../App';
 import { CopyButton, Empty, Field, Modal, PageHeader, useToast } from '../components';
+import { logoDataUrl } from '../brand';
 import { db, useSettings } from '../db';
 import { formatDateDE, uid } from '../lib/dates';
 import { downloadPptx } from '../lib/pptx';
@@ -81,10 +82,10 @@ function ReportEditor({ param }: { param: string }) {
     [a[i], a[j]] = [a[j], a[i]]; set(list, a);
   };
 
-  function openPdf() {
+  async function openPdf() {
     const w = window.open('', '_blank');
     if (!w) { toast('Pop-up blockiert – bitte erlauben'); return; }
-    w.document.write(customerHtml(r!, { companyName: s.companyName, logoDataUrl: s.logoDataUrl }, summary));
+    w.document.write(customerHtml(r!, { companyName: s.companyName, logoDataUrl: await logoDataUrl(s.logoDataUrl) }, summary));
     w.document.close();
     setTimeout(() => w.print(), 500);
   }
@@ -114,7 +115,7 @@ function ReportEditor({ param }: { param: string }) {
         <button className="btn ghost" onClick={() => navigate('berichte')}>← Übersicht</button>
         <CopyButton text={text} label="FSM-Text kopieren" />
         <button className="btn" onClick={openPdf}>Kunden-PDF</button>
-        <button className="btn" onClick={() => downloadPptx(r, { companyName: s.companyName, logoDataUrl: s.logoDataUrl }).catch((e) => toast('Fehler: ' + e.message))}>PowerPoint</button>
+        <button className="btn" onClick={async () => downloadPptx(r, { companyName: s.companyName, logoDataUrl: await logoDataUrl(s.logoDataUrl) }).catch((e) => toast('Fehler: ' + e.message))}>PowerPoint</button>
       </>} />
 
       <div className="split">

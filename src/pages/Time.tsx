@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { download, Field, Modal, PageHeader } from '../components';
 import { db, useSettings } from '../db';
 import { addDays, endOfMonth, formatDateDE, formatMinutes, MONTHS, startOfMonth, todayISO, uid, weekdayShort } from '../lib/dates';
-import { creditedMinutes, effectiveBreak, grossMinutes, overtimeBalance, summarizeRange, vacationUsed } from '../lib/time';
+import { balanceDate, creditedMinutes, effectiveBreak, grossMinutes, overtimeBalance, summarizeRange, vacationUsed } from '../lib/time';
 import { TIME_KINDS, type TimeEntry, type TimeKind } from '../lib/types';
 
 const TIMED: TimeKind[] = ['arbeit', 'reise', 'bereitschaft'];
@@ -16,12 +16,13 @@ export default function TimePage() {
   const all = useLiveQuery(() => db.times.toArray(), []) ?? [];
   const to = endOfMonth(month);
   const sum = summarizeRange(month, to, all, s);
+  const cutoff = balanceDate(todayISO(), all);
   // Saldo nur bis heute (zukünftige Tage sind noch nicht „fehlend“) und erst ab Start des Überstundenkontos
   const saldoFrom = month < s.overtimeStartDate ? s.overtimeStartDate : month;
-  const saldoTo = to < todayISO() ? to : todayISO();
+  const saldoTo = to < cutoff ? to : cutoff;
   const monthDiff = saldoFrom <= saldoTo ? summarizeRange(saldoFrom, saldoTo, all, s).diff : 0;
-  const counts = (d: string) => d >= s.overtimeStartDate && d <= todayISO();
-  const balanceEnd = overtimeBalance(to < todayISO() ? to : todayISO(), all, s);
+  const counts = (d: string) => d >= s.overtimeStartDate && d <= cutoff;
+  const balanceEnd = overtimeBalance(to < cutoff ? to : cutoff, all, s);
   const year = Number(month.slice(0, 4));
   const vacUsed = vacationUsed(year, all, s);
   const byDate = (d: string) => all.filter((e) => e.date === d).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
