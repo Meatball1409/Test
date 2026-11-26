@@ -107,3 +107,32 @@ describe('ICS', () => {
     expect(back[0]).toMatchObject({ title: 'Einsatz, Kunde', startDate: '2026-11-02', endDate: '2026-11-04', location: 'Wolfertschwenden' });
   });
 });
+
+import { adapter, allowance, checkLink, entriesFor, isDomestic, safety, search } from './visa';
+describe('Visa-Kompass', () => {
+  it('Adapter nach Steckertyp', () => {
+    expect(adapter('C,F').tone).toBe('ok');
+    expect(adapter('A,B').text).toBe('Nötig (Typ A/B)');
+    expect(adapter('C,G').tone).toBe('warn');
+  });
+  it('Sicherheitsstufe', () => {
+    expect(safety('Ukraine').tone).toBe('bad');
+    expect(safety('Thailand').tone).toBe('warn');
+    expect(safety('Kanada').tone).toBe('ok');
+  });
+  it('Link-Prüfung', () => {
+    expect(checkLink('https://esta.cbp.dhs.gov/')?.tone).toBe('ok');
+    expect(checkLink('esta-usa-online.com/apply')?.tone).toBe('bad');
+    expect(checkLink('')).toBeUndefined();
+  });
+  it('Suche und Länder-Einträge', () => {
+    expect(search('bali', 'all', new Set()).length).toBe(2);
+    expect(entriesFor('USA')[0].what).toBe('ESTA');
+    expect(entriesFor('Bali').length).toBe(2);
+  });
+  it('BMF-Pauschalen', () => {
+    expect(allowance('USA')).toMatchObject({ full: 59, partial: 40 });
+    expect(allowance('USA')!.cities[0]).toMatchObject({ name: 'New York City', full: 66, partial: 44 });
+    expect(isDomestic('DE')).toBe(true);
+  });
+});

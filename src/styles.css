@@ -47,7 +47,7 @@ a { color: var(--accent); }
   .topbar { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 15; padding: calc(.7rem + env(safe-area-inset-top)) 1rem .7rem; background: var(--nav-bg); -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px); border-bottom: 1px solid var(--line); }
   .topbar-brand { display: flex; text-decoration: none; }
   .nav { bottom: 0; left: 0; right: 0; justify-content: space-around; padding: .35rem .3rem calc(.35rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
-  .nav .brand { display: none; }
+  .nav .brand, .nav-item.last { display: none; }
   .nav-item { flex-direction: column; gap: .1rem; padding: .35rem .15rem; font-size: .63rem; flex: 1; min-width: 0; border-radius: 12px; }
   .nav-item.active { background: transparent; }
   .nav-item.active .ico { background: var(--accent-soft); }
@@ -233,3 +233,43 @@ details.card summary { cursor: pointer; margin-bottom: .6rem; }
 .modal-body { padding: 1rem 1.1rem; overflow: auto; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 6rem; background: var(--navy); color: #fff; padding: .75rem 1.2rem; border-radius: 14px; font-weight: 500; z-index: 60; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); max-width: 90vw; text-align: center; }
 @media (min-width: 900px) { .toast { bottom: 2rem; } }
+
+/* Visa-Kompass */
+.visa-search { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 92%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); padding: .6rem 0 .5rem; margin-bottom: .6rem; display: flex; flex-direction: column; gap: .5rem; }
+@media (max-width: 899px) { .visa-search { top: calc(52px + env(safe-area-inset-top)); } }
+.visa-search .search { margin: 0; }
+.pills.scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.pills.scroll::-webkit-scrollbar { display: none; }
+.pills.scroll .pill { flex: none; }
+.card.visa { display: flex; flex-direction: column; gap: .6rem; margin: 0; }
+.card.visa .pills { align-items: center; }
+.card.visa h3 { margin: 0; font-size: 1.15rem; color: var(--text); text-transform: none; letter-spacing: -.01em; flex: 1; }
+.sec { display: flex; flex-direction: column; gap: .4rem; border-top: 1px solid var(--line); padding-top: .55rem; }
+.sec-h { font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-2); }
+@media (prefers-color-scheme: dark) { .sec-h { color: var(--accent); } }
+.rows { display: grid; grid-template-columns: auto 1fr; gap: .25rem .8rem; margin: 0; font-size: .9rem; }
+.rows dt { color: var(--muted); }
+.rows dd { margin: 0; font-weight: 500; text-align: right; }
+.note { font-size: .85rem; color: var(--muted); margin: 0; }
+.tag { display: inline-block; font-size: .75rem; font-weight: 600; padding: .15rem .5rem; border-radius: 6px; text-decoration: none; }
+.tag.ok { background: color-mix(in srgb, var(--pos) 14%, transparent); color: var(--pos); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+.tag.bad { background: color-mix(in srgb, var(--neg) 13%, transparent); color: var(--neg); }
+.tag.info { background: var(--accent-soft); color: var(--accent-2); }
+@media (prefers-color-scheme: dark) { .tag.info { color: var(--accent); } }
+a.tag:hover { text-decoration: underline; }
+.portal { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: .6rem; text-decoration: none; color: var(--text); background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: .55rem .75rem; }
+.portal:hover { border-color: var(--accent); }
+.portal .domain { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; overflow-wrap: anywhere; }
+.portal .domain b { color: var(--pos); }
+.portal .go { flex: none; font-size: .8rem; font-weight: 600; color: var(--accent); }
+.result { border-radius: 10px; padding: .6rem .8rem; margin-top: .7rem; font-size: .9rem; }
+.result.ok { background: color-mix(in srgb, var(--pos) 14%, transparent); color: var(--pos); }
+.result.warn { background: var(--warn-bg); color: var(--warn); }
+.result.bad { background: color-mix(in srgb, var(--neg) 13%, transparent); color: var(--neg); }
+.rules { margin: .4rem 0 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: .45rem; }
+.rules code, .result code { font-size: .82rem; background: var(--field); padding: .05rem .35rem; border-radius: 4px; }
+.info { display: flex; flex-direction: column; gap: .55rem; margin-top: .4rem; }
+.info p { margin: 0; }
+.topbar-actions { display: flex; align-items: center; gap: .6rem; }
+.topbar-actions a { color: var(--muted); display: flex; }
