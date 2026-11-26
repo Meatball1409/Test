@@ -173,3 +173,39 @@ describe('Überstundenstand eingeben', () => {
     expect(overtimeBalance('2026-11-23', [work('2026-11-23', '07:00', '18:00')], s2)).toBe(1395 + 135);
   });
 });
+
+import { afterPush, hash, localChanges, planPull, stableStringify, type SyncTable } from './syncCore';
+describe('Abgleich (Sync)', () => {
+  const empty = () => ({ events: [], times: [], snippets: [], reports: [], trips: [], settings: [] } as Record<SyncTable, { id: string }[]>);
+  it('stabiler Hash unabhängig von Schlüssel-Reihenfolge', () => {
+    expect(stableStringify({ b: 1, a: { d: 2, c: [1, { y: 1, x: 2 }] } })).toBe('{"a":{"c":[1,{"x":2,"y":1}],"d":2},"b":1}');
+    expect(hash({ a: 1, b: 2 })).toBe(hash({ b: 2, a: 1 }));
+    expect(hash({ a: 1, u: undefined })).toBe(hash({ a: 1 }));
+  });
+  it('erkennt neue, geänderte und gelöschte Einträge', () => {
+    const l = empty();
+    l.times = [{ id: 'a', v: 1 } as { id: string }, { id: 'b', v: 1 } as { id: string }];
+    let changes = localChanges(l, {});
+    expect(changes.map((c) => c.id)).toEqual(['a', 'b']);
+    let h = afterPush({}, changes);
+    expect(localChanges(l, h)).toEqual([]);
+    l.times = [{ id: 'a', v: 2 } as { id: string }];
+    changes = localChanges(l, h);
+    expect(changes).toEqual([{ tbl: 'times', id: 'a', data: { id: 'a', v: 2 }, deleted: false }, { tbl: 'times', id: 'b', data: null, deleted: true }]);
+    h = afterPush(h, changes);
+    expect(Object.keys(h)).toEqual(['times/a']);
+  });
+  it('wendet Server-Änderungen an und merkt sich den Stand', () => {
+    const plan = planPull([
+      { tbl: 'times', id: 'a', data: { id: 'a', v: 3 }, deleted: false, updated_at: '2026-11-26T10:00:00Z' },
+      { tbl: 'trips', id: 'x', data: null, deleted: true, updated_at: '2026-11-26T11:00:00Z' },
+    ], { 'trips/x': 'h' });
+    expect(plan.put.times).toEqual([{ id: 'a', v: 3 }]);
+    expect(plan.del.trips).toEqual(['x']);
+    expect(plan.hashes).toEqual({ 'times/a': hash({ id: 'a', v: 3 }) });
+    expect(plan.maxTs).toBe('2026-11-26T11:00:00Z');
+    // danach keine erneute Übertragung des gleichen Stands
+    const l = empty(); l.times = [{ id: 'a', v: 3 } as { id: string }];
+    expect(localChanges(l, plan.hashes)).toEqual([]);
+  });
+});
