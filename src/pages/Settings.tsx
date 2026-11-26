@@ -1,0 +1,98 @@
+import { Logo } from '../brand';
+import { download, Field, PageHeader, pickFile, useToast } from '../components';
+import { db, exportAll, importAll, saveSettings, useSettings } from '../db';
+import { todayISO } from '../lib/dates';
+import { STATES, type StateCode } from '../lib/holidays';
+import { DEFAULT_SNIPPETS } from '../lib/snippets';
+
+const DAYS = [[1, 'Mo'], [2, 'Di'], [3, 'Mi'], [4, 'Do'], [5, 'Fr'], [6, 'Sa'], [0, 'So']] as const;
+
+export default function SettingsPage() {
+  const s = useSettings();
+  const toast = useToast();
+  const num = (k: keyof typeof s) => (e: React.ChangeEvent<HTMLInputElement>) => saveSettings({ [k]: Number(e.target.value) });
+
+  async function uploadLogo() {
+    const f = await pickFile('image/png,image/jpeg,image/svg+xml');
+    if (!f) return;
+    if (f.size > 1_000_000) return toast('Logo bitte unter 1 MB');
+    const r = new FileReader();
+    r.onload = () => saveSettings({ logoDataUrl: String(r.result) });
+    r.readAsDataURL(f);
+  }
+  async function restore(mode: 'merge' | 'replace') {
+    const f = await pickFile('.json,application/json');
+    if (!f) return;
+    if (mode === 'replace' && !confirm('Alle aktuellen Daten werden ersetzt. Fortfahren?')) return;
+    try { await importAll(await f.text(), mode); toast('Sicherung eingespielt'); } catch (e) { toast((e as Error).message); }
+  }
+
+  return (
+    <>
+      <PageHeader title="Einstellungen" />
+      <div className="grid2">
+        <section className="card">
+          <h2>Persönlich</h2>
+          <div className="form">
+            <Field label="Name (für Berichte)"><input value={s.name} onChange={(e) => saveSettings({ name: e.target.value })} /></Field>
+            <Field label="Bundesland (Feiertage)"><select value={s.state} onChange={(e) => saveSettings({ state: e.target.value as StateCode })}>
+              {Object.entries(STATES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+            <Field label="Heimatadresse / Startpunkt" wide hint="Für Routenplanung"><input value={s.homeAddress} onChange={(e) => saveSettings({ homeAddress: e.target.value })} /></Field>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>Arbeitszeit</h2>
+          <div className="form">
+            <Field label="Wochenstunden (Soll)"><input type="number" step="0.5" min={0} value={s.weeklyHours} onChange={num('weeklyHours')} /></Field>
+            <Field label="Urlaubstage / Jahr"><input type="number" min={0} value={s.vacationDaysPerYear} onChange={num('vacationDaysPerYear')} /></Field>
+            <Field label="Arbeitstage" wide>
+              <div className="pills">{DAYS.map(([d, l]) => (
+                <button key={d} className={s.workDays.includes(d) ? 'pill on' : 'pill'} onClick={() => saveSettings({ workDays: s.workDays.includes(d) ? s.workDays.filter((x) => x !== d) : [...s.workDays, d] })}>{l}</button>
+              ))}</div>
+            </Field>
+            <Field label="Reisezeit zählt zu (%)" hint="Laut Betriebsvereinbarung / Arbeitsvertrag"><input type="number" min={0} max={100} value={Math.round(s.travelFactor * 100)} onChange={(e) => saveSettings({ travelFactor: Number(e.target.value) / 100 })} /></Field>
+            <Field label="Bereitschaft zählt zu (%)"><input type="number" min={0} max={100} value={Math.round(s.standbyFactor * 100)} onChange={(e) => saveSettings({ standbyFactor: Number(e.target.value) / 100 })} /></Field>
+            <Field label="Gesetzliche Mindestpause automatisch"><input type="checkbox" checked={s.autoLegalBreak} onChange={(e) => saveSettings({ autoLegalBreak: e.target.checked })} /></Field>
+            <Field label="Überstunden-Übertrag (h)" hint="Stand zum Startdatum"><input type="number" step="0.25" value={s.overtimeStartBalance / 60} onChange={(e) => saveSettings({ overtimeStartBalance: Math.round(Number(e.target.value) * 60) })} /></Field>
+            <Field label="Startdatum Überstundenkonto"><input type="date" max={todayISO()} value={s.overtimeStartDate} onChange={(e) => saveSettings({ overtimeStartDate: e.target.value })} /></Field>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>Reisekosten</h2>
+          <div className="form">
+            <Field label="Kilometerpauschale (€/km)"><input type="number" step="0.01" value={s.kmRate} onChange={num('kmRate')} /></Field>
+            <Field label="Verpflegung 24 h (€)"><input type="number" step="0.5" value={s.mealFull} onChange={num('mealFull')} /></Field>
+            <Field label="Verpflegung An-/Abreise, >8 h (€)"><input type="number" step="0.5" value={s.mealPartial} onChange={num('mealPartial')} /></Field>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>Berichte &amp; Präsentationen</h2>
+          <div className="form">
+            <Field label="Firmenname (Wortmarke)"><input value={s.companyName} onChange={(e) => saveSettings({ companyName: e.target.value })} /></Field>
+            <Field label="Logo">
+              <div className="row">
+                <Logo height={28} />
+                <button className="btn" onClick={uploadLogo}>{s.logoDataUrl ? 'Ändern' : 'Eigenes Logo'}</button>
+                {s.logoDataUrl && <button className="btn ghost" onClick={() => saveSettings({ logoDataUrl: undefined })}>Entfernen</button>}
+              </div>
+            </Field>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>Daten &amp; Sicherung</h2>
+          <p className="muted">Alle Daten liegen nur auf diesem Gerät (offline nutzbar). Mach regelmäßig eine Sicherung – damit überträgst du auch Daten zwischen Handy und PC.</p>
+          <div className="row wrap">
+            <button className="btn primary" onClick={async () => download(`techdesk-backup-${todayISO()}.json`, await exportAll(), 'application/json')}>Sicherung herunterladen</button>
+            <button className="btn" onClick={() => restore('merge')}>Sicherung zusammenführen</button>
+            <button className="btn" onClick={() => restore('replace')}>Sicherung wiederherstellen</button>
+            <button className="btn ghost" onClick={async () => { await db.snippets.bulkPut(DEFAULT_SNIPPETS); toast('Standard-Vorlagen wiederhergestellt'); }}>Standard-Vorlagen zurücksetzen</button>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
