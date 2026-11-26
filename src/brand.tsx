@@ -6,6 +6,8 @@ import { useSettings } from './db';
  * Ein in den Einstellungen hochgeladenes Logo hat Vorrang. Ohne Datei erscheint die Text-Wortmarke.
  */
 const bundled = Object.values(import.meta.glob('./assets/multivac_logo.png', { eager: true, query: '?url', import: 'default' }))[0] as string | undefined;
+/** Helle Variante für den Dunkelmodus (gleiche Datei, nur umgefärbt) */
+const bundledDark = Object.values(import.meta.glob('./assets/multivac_logo_dark.png', { eager: true, query: '?url', import: 'default' }))[0] as string | undefined;
 
 export function useLogoUrl(): string | undefined {
   const s = useSettings();
@@ -15,7 +17,13 @@ export function useLogoUrl(): string | undefined {
 export function Logo({ height = 28, className = '' }: { height?: number; className?: string }) {
   const s = useSettings();
   const url = useLogoUrl();
-  if (url) return <img className={'logo-img ' + className} src={url} alt={s.companyName || 'Logo'} style={{ height }} />;
+  if (s.logoDataUrl) return <img className={'logo-img custom ' + className} src={s.logoDataUrl} alt={s.companyName || 'Logo'} style={{ height }} />;
+  if (url) return (
+    <picture>
+      {bundledDark && <source srcSet={bundledDark} media="(prefers-color-scheme: dark)" />}
+      <img className={'logo-img ' + (bundledDark ? '' : 'custom ') + className} src={url} alt={s.companyName || 'Logo'} style={{ height }} />
+    </picture>
+  );
   return <span className={'wordmark ' + className} style={{ fontSize: height * 0.62 }}>{s.companyName || 'TechDesk'}</span>;
 }
 

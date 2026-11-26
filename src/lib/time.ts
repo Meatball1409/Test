@@ -22,8 +22,20 @@ export function legalBreak(grossMin: number): number {
 
 export function effectiveBreak(e: TimeEntry, s: Settings): number {
   const entered = e.breakMin ?? 0;
-  if (e.kind !== 'arbeit' || !s.autoLegalBreak) return entered;
-  return Math.max(entered, legalBreak(grossMinutes(e.start, e.end)));
+  if (e.kind !== 'arbeit') return entered;
+  const gross = grossMinutes(e.start, e.end);
+  if (s.breakMode === 'firma') return gross >= s.companyBreakFromMin ? s.companyBreakMin : 0;
+  if (s.breakMode === 'gesetzlich') return Math.max(entered, legalBreak(gross));
+  return entered;
+}
+
+/** Anzeige der Pause, z. B. „12:00–12:45“ bei der Firmenregel */
+export function breakLabel(e: TimeEntry, s: Settings): string {
+  const b = effectiveBreak(e, s);
+  if (!b) return 'keine Pause';
+  if (s.breakMode !== 'firma') return `${b} min Pause`;
+  const st = timeToMinutes(s.companyBreakStart) + b;
+  return `Pause ${s.companyBreakStart}–${String(Math.floor(st / 60)).padStart(2, '0')}:${String(st % 60).padStart(2, '0')}`;
 }
 
 /** Angerechnete Minuten eines Eintrags (ohne Abwesenheiten) */
@@ -69,8 +81,8 @@ export function summarizeDay(date: string, entries: TimeEntry[], s: Settings, pr
 
   const workNet = entries.filter((e) => e.kind === 'arbeit')
     .reduce((sum, e) => sum + Math.max(0, grossMinutes(e.start, e.end) - effectiveBreak(e, s)), 0);
-  if (workNet > 10 * 60) warnings.push('Mehr als 10 h Arbeitszeit (§3 ArbZG)');
-  for (const e of entries) {
+  if (s.arbzgWarnings && workNet > 10 * 60) warnings.push('Mehr als 10 h Arbeitszeit (§3 ArbZG)');
+  if (s.breakMode === 'manuell') for (const e of entries) {
     if (e.kind === 'arbeit' && (e.breakMin ?? 0) < legalBreak(grossMinutes(e.start, e.end)))
       warnings.push(`Pause unter gesetzlichem Minimum (${legalBreak(grossMinutes(e.start, e.end))} min)`);
   }
@@ -78,9 +90,9 @@ export function summarizeDay(date: string, entries: TimeEntry[], s: Settings, pr
   const firstStart = earliestStart(entries);
   if (lastEnd !== undefined && firstStart !== undefined) {
     const rest = 24 * 60 - lastEnd + firstStart;
-    if (rest < 11 * 60) warnings.push(`Ruhezeit nur ${Math.floor(rest / 60)}:${String(rest % 60).padStart(2, '0')} h (§5 ArbZG: 11 h)`);
+    if (s.arbzgWarnings && rest < 11 * 60) warnings.push(`Ruhezeit nur ${Math.floor(rest / 60)}:${String(rest % 60).padStart(2, '0')} h (§5 ArbZG: 11 h)`);
   }
-  if (entries.length > 0 && (weekday(date) === 0 || holiday)) warnings.push(holiday ? `Arbeit am Feiertag (${holiday})` : 'Sonntagsarbeit');
+  if (s.arbzgWarnings && entries.length > 0 && (weekday(date) === 0 || holiday)) warnings.push(holiday ? `Arbeit am Feiertag (${holiday})` : 'Sonntagsarbeit');
 
   return { date, target, actual, diff: actual - target, absence: absenceEntry?.kind, holiday, warnings: [...new Set(warnings)] };
 }
@@ -134,4 +146,9 @@ export function vacationUsed(year: number, all: TimeEntry[], s: Settings): numbe
 /** Stichtag für Salden: heute nur, wenn schon etwas eingetragen ist – sonst bis gestern (der Tag läuft noch). */
 export function balanceDate(today: string, all: TimeEntry[]): string {
   return all.some((e) => e.date === today) ? today : addDays(today, -1);
+}
+
+/** Überstundenstand so setzen, dass er zu Beginn von `date` genau `minutes` beträgt */
+export function setBalanceAt(date: string, minutes: number): Pick<Settings, 'overtimeStartDate' | 'overtimeStartBalance'> {
+  return { overtimeStartDate: date, overtimeStartBalance: Math.round(minutes) };
 }

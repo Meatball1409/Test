@@ -84,3 +84,15 @@ export function endOfMonth(iso: string): string {
 export function uid(): string {
   return crypto.randomUUID();
 }
+
+/**
+ * Stunden-Eingabe lesen: „23:15“, „-4:30“, „+12“, „12,5“, „1.75“ → Minuten. Ungültig → null.
+ */
+export function parseHours(input: string): number | null {
+  const t = input.trim().replace(/\s/g, '').replace('−', '-');
+  const m = t.match(/^([+-])?(\d{1,4})(?::([0-5]?\d))?$/);
+  if (m) return (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0));
+  const d = t.match(/^([+-])?(\d{1,4})[.,](\d{1,2})$/);
+  if (d) return Math.round((d[1] === '-' ? -1 : 1) * Number(`${d[2]}.${d[3]}`) * 60);
+  return null;
+}
