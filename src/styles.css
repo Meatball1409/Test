@@ -285,3 +285,34 @@ a.tag:hover { text-decoration: underline; }
 .sync-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .4rem; background: var(--pos); }
 .sync-dot.syncing { background: var(--accent); } .sync-dot.offline { background: var(--muted); } .sync-dot.error { background: var(--neg); }
 .recovery { display: block; text-align: center; font: 700 1.15rem/1.6 ui-monospace, Consolas, monospace; letter-spacing: .06em; padding: .9rem; border-radius: 12px; background: var(--accent-soft); color: var(--text); border: 1px dashed var(--accent); word-break: break-all; user-select: all; }
+
+/* Urlaubszähler */
+.card.vac { display: grid; grid-template-columns: auto 1fr; gap: .6rem 1.4rem; align-items: center; }
+.vac-main { display: flex; flex-direction: column; grid-row: span 2; padding-right: .4rem; }
+.vac-main b { font-size: 2.4rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.vac-main small { color: var(--muted); }
+.eyebrow-dark { font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-2); }
+@media (prefers-color-scheme: dark) { .eyebrow-dark { color: var(--accent); } }
+.vac-bar { display: flex; height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.vac-bar i { display: block; height: 100%; }
+.vac-bar .t, .dot.t { background: var(--accent); }
+.vac-bar .p, .dot.p { background: var(--sky); }
+.vac-bar .h, .dot.h { background: var(--warn); }
+.vac-rows { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; margin: 0; font-size: .88rem; }
+.vac-rows div { display: flex; gap: .4rem; }
+.vac-rows dt { color: var(--muted); display: flex; align-items: center; gap: .35rem; }
+.vac-rows dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.vac-rows .dot { width: 8px; height: 8px; display: inline-block; }
+.card.vac > .btn { grid-column: 1 / -1; justify-self: start; }
+@media (max-width: 640px) { .card.vac { grid-template-columns: 1fr; } .vac-main { grid-row: auto; flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: .5rem; } .vac-main .eyebrow-dark { flex-basis: 100%; } }
+
+/* Feiertage im Kalender */
+.cal-day.holiday { background: color-mix(in srgb, var(--neg) 7%, var(--card)); border-color: color-mix(in srgb, var(--neg) 30%, var(--line)); }
+.cal-day .hol { font-size: .64rem; font-weight: 600; color: var(--neg); line-height: 1.15; }
+.cal-day .hol.half { color: var(--warn); }
+.tt .day small.half { color: var(--warn); }
+.hol-list li { cursor: pointer; }
+@media (max-width: 640px) {
+  .cal-day.holiday .num { color: var(--neg); }
+  .cal-day.holiday::after { content: ''; width: 18px; height: 3px; border-radius: 2px; background: var(--neg); margin-top: auto; }
+}

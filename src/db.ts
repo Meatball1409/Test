@@ -114,3 +114,11 @@ export async function importAll(json: string, mode: 'merge' | 'replace') {
 export async function exportSnippets(): Promise<string> {
   return JSON.stringify({ app: 'techdesk', version: 1, exportedAt: new Date().toISOString(), data: { snippets: await db.snippets.toArray() } }, null, 2);
 }
+
+/** Einmalig: Bundesland auf Bayern setzen (alle Kollegen sind in Bayern angestellt). Ohne Schema-Änderung. */
+export async function migrateDefaults() {
+  if (await getMeta<boolean>('migrated-by')) return;
+  const cur = await db.settings.get('main');
+  if (cur && cur.state === 'BW') await db.settings.put({ ...cur, state: 'BY' });
+  await setMeta('migrated-by', true);
+}

@@ -4,7 +4,9 @@ import { navigate, routeParam } from '../App';
 import { download, Field, Modal, PageHeader, pickFile, useToast } from '../components';
 import { db, useSettings } from '../db';
 import { addDays, formatDateDE, isoWeek, MONTHS, startOfMonth, todayISO, uid, weekday } from '../lib/dates';
-import { holidayName } from '../lib/holidays';
+import { halfDayName, holidayName, holidays, STATES } from '../lib/holidays';
+import { vacationSummary } from '../lib/time';
+import { fmtDays } from './Time';
 import { fromIcs, toIcs } from '../lib/ics';
 import { EVENT_TYPES, type CalendarEvent, type EventType } from '../lib/types';
 
@@ -17,6 +19,11 @@ export default function CalendarPage() {
   const [edit, setEdit] = useState<CalendarEvent | null>(null);
   const [filter, setFilter] = useState<EventType | ''>('');
 
+  const year = Number(month.slice(0, 4));
+  const vacEvents = useLiveQuery(() => db.events.where('type').equals('urlaub').toArray(), []) ?? [];
+  const times = useLiveQuery(() => db.times.where('kind').equals('urlaub').toArray(), []) ?? [];
+  const vac = vacationSummary(year, times, vacEvents, s, todayISO());
+  const yearHolidays = [...holidays(year, s.state).entries()].sort();
   const gridStart = addDays(month, -((weekday(month) + 6) % 7));
   const gridEnd = addDays(gridStart, 41);
   const events = useLiveQuery(() => db.events.where('startDate').belowOrEqual(gridEnd).filter((e) => e.endDate >= gridStart).toArray(), [gridStart, gridEnd]) ?? [];
@@ -29,6 +36,7 @@ export default function CalendarPage() {
   };
   const y = Number(month.slice(0, 4)), m = Number(month.slice(5, 7));
   const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+  const weekdayLong = (d: string) => ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'][weekday(d)];
   const newEvent = (date: string): CalendarEvent => ({ id: uid(), title: '', type: 'einsatz', startDate: date, endDate: date });
 
   async function importIcs() {
@@ -51,6 +59,26 @@ export default function CalendarPage() {
         <button className="btn primary" onClick={() => setEdit(newEvent(selected))}>+ Termin</button>
       </>} />
 
+      <section className="card vac">
+        <div className="vac-main">
+          <span className="eyebrow-dark">Urlaub {year}</span>
+          <b className={vac.remaining < 0 ? 'neg' : ''}>{fmtDays(vac.remaining)}</b>
+          <small>Tage übrig</small>
+        </div>
+        <div className="vac-bar" aria-hidden>
+          <i className="t" style={{ width: `${Math.min(100, (vac.taken / vac.entitlement) * 100)}%` }} />
+          <i className="p" style={{ width: `${Math.min(100, (vac.planned / vac.entitlement) * 100)}%` }} />
+          <i className="h" style={{ width: `${Math.min(100, (vac.halfTotal / vac.entitlement) * 100)}%` }} />
+        </div>
+        <dl className="vac-rows">
+          <div><dt>Anspruch</dt><dd>{fmtDays(vac.entitlement)}</dd></div>
+          <div><dt><i className="dot t" />Genommen</dt><dd>{fmtDays(vac.taken)}</dd></div>
+          <div><dt><i className="dot p" />Geplant</dt><dd>{fmtDays(vac.planned)}</dd></div>
+          <div><dt><i className="dot h" />24.12. + 31.12.</dt><dd>{fmtDays(vac.halfTotal)}</dd></div>
+        </dl>
+        <button className="btn small" onClick={() => setEdit({ ...newEvent(selected), type: 'urlaub', title: 'Urlaub' })}>+ Urlaub eintragen</button>
+      </section>
+
       <div className="cal-toolbar">
         <button className="btn" onClick={() => shift(-1)} aria-label="Vorheriger Monat">‹</button>
         <h2>{MONTHS[m - 1]} {y}</h2>
@@ -71,10 +99,11 @@ export default function CalendarPage() {
           return (
             <Fragment key={d}>
               {i % 7 === 0 && <div className="cal-wk">{isoWeek(d)}</div>}
-              <button className={['cal-day', d.slice(0, 7) !== month.slice(0, 7) && 'out', d === todayISO() && 'today', d === selected && 'sel', (hol || weekday(d) === 0 || weekday(d) === 6) && 'off'].filter(Boolean).join(' ')}
+              <button className={['cal-day', d.slice(0, 7) !== month.slice(0, 7) && 'out', d === todayISO() && 'today', d === selected && 'sel', (hol || weekday(d) === 0 || weekday(d) === 6) && 'off', hol && 'holiday'].filter(Boolean).join(' ')}
                 onClick={() => setSelected(d)} onDoubleClick={() => setEdit(newEvent(d))}>
                 <span className="num">{Number(d.slice(8))}</span>
                 {hol && <span className="hol">{hol}</span>}
+                {!hol && halfDayName(d) && <span className="hol half">{halfDayName(d)}</span>}
                 {evs.slice(0, 3).map((e) => <span key={e.id} className="chip" style={{ background: EVENT_TYPES[e.type].color }}>{e.title}</span>)}
                 {evs.length > 3 && <span className="more">+{evs.length - 3}</span>}
                 {evs.length > 0 && <span className="dots">{evs.slice(0, 4).map((e) => <i key={e.id} style={{ background: EVENT_TYPES[e.type].color }} />)}</span>}
@@ -85,7 +114,7 @@ export default function CalendarPage() {
       </div>
 
       <section className="card">
-        <div className="card-head"><h2>{formatDateDE(selected)}{holidayName(selected, s.state) ? ` · ${holidayName(selected, s.state)}` : ''}</h2>
+        <div className="card-head"><h2>{formatDateDE(selected)}{holidayName(selected, s.state) ? ` · ${holidayName(selected, s.state)} (arbeitsfrei)` : halfDayName(selected) ? ` · ${halfDayName(selected)}` : ''}</h2>
           <button className="btn" onClick={() => setEdit(newEvent(selected))}>+ Termin</button></div>
         {on(selected).length === 0 ? <p className="muted">Keine Termine. Doppelklick auf einen Tag legt einen Termin an.</p> : (
           <ul className="list">{on(selected).map((e) => (
@@ -96,6 +125,25 @@ export default function CalendarPage() {
         )}
         <p className="legend">{Object.values(EVENT_TYPES).map((t) => <span key={t.label}><i style={{ background: t.color }} />{t.label}</span>)}</p>
       </section>
+
+      <details className="card">
+        <summary><b>Feiertage {year} · {STATES[s.state]}</b> <span className="muted small">({yearHolidays.length} arbeitsfreie Tage{vac.halfDays.length ? ' + 2 halbe' : ''})</span></summary>
+        <ul className="list hol-list">
+          {yearHolidays.map(([d, n]) => (
+            <li key={d} onClick={() => { setMonth(startOfMonth(d)); setSelected(d); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+              <span className="dot" style={{ background: 'var(--neg)' }} />
+              <div><b>{n}</b><small>{weekdayLong(d)}, {formatDateDE(d)}{weekday(d) === 0 || weekday(d) === 6 ? ' · fällt aufs Wochenende' : ''}</small></div>
+            </li>
+          ))}
+          {[`${year}-12-24`, `${year}-12-31`].map((d) => (
+            <li key={d} onClick={() => { setMonth(startOfMonth(d)); setSelected(d); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+              <span className="dot" style={{ background: 'var(--warn)' }} />
+              <div><b>{halfDayName(d)}</b><small>{weekdayLong(d)}, {formatDateDE(d)} · {vac.halfDays.some((h) => h.date === d) ? '½ Urlaubstag wird automatisch abgezogen' : 'kein Arbeitstag – kein Abzug'}</small></div>
+            </li>
+          ))}
+        </ul>
+        {s.state === 'BY' && <p className="muted small">Mariä Himmelfahrt (15.08.) gilt in Gemeinden mit überwiegend katholischer Bevölkerung – das ist der Großteil Bayerns. Das Augsburger Friedensfest (08.08.) gilt nur im Stadtgebiet Augsburg und ist nicht eingetragen.</p>}
+      </details>
 
       {edit && <EventEditor ev={edit} onClose={() => setEdit(null)} />}
     </>

@@ -1,13 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
-import { routeParam } from '../App';
+import { navigate, routeParam } from '../App';
 import { download, Field, Modal, PageHeader } from '../components';
 import { db, saveSettings, useSettings } from '../db';
 import { addDays, endOfMonth, parseHours, formatDateDE, formatMinutes, MONTHS, startOfMonth, todayISO, uid, weekdayShort } from '../lib/dates';
-import { balanceDate, breakLabel, creditedMinutes, effectiveBreak, setBalanceAt, grossMinutes, overtimeBalance, summarizeRange, vacationUsed } from '../lib/time';
+import { balanceDate, breakLabel, creditedMinutes, effectiveBreak, setBalanceAt, grossMinutes, overtimeBalance, summarizeRange, vacationSummary, withCalendarVacation } from '../lib/time';
 import { TIME_KINDS, type TimeEntry, type TimeKind } from '../lib/types';
 
 const TIMED: TimeKind[] = ['arbeit', 'reise', 'bereitschaft'];
+export const fmtDays = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 
 export default function TimePage() {
   const s = useSettings();
@@ -16,7 +17,9 @@ export default function TimePage() {
   const [onlyFilled, setOnlyFilled] = useState(false);
   const [balanceOpen, setBalanceOpen] = useState(false);
   const loaded = useLiveQuery(() => db.times.toArray(), []);
-  const all = loaded ?? [];
+  const vacEvents = useLiveQuery(() => db.events.where('type').equals('urlaub').toArray(), []) ?? [];
+  const own = loaded ?? [];
+  const all = withCalendarVacation(own, vacEvents);
   const to = endOfMonth(month);
   const sum = summarizeRange(month, to, all, s);
   const cutoff = balanceDate(todayISO(), all);
@@ -27,7 +30,7 @@ export default function TimePage() {
   const counts = (d: string) => d >= s.overtimeStartDate && d <= cutoff;
   const balanceEnd = overtimeBalance(to < cutoff ? to : cutoff, all, s);
   const year = Number(month.slice(0, 4));
-  const vacUsed = vacationUsed(year, all, s);
+  const vac = vacationSummary(year, own, vacEvents, s, todayISO());
   const byDate = (d: string) => all.filter((e) => e.date === d).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
   const travel = all.filter((e) => e.kind === 'reise' && e.date >= month && e.date <= to).reduce((a, e) => a + grossMinutes(e.start, e.end) - (e.breakMin ?? 0), 0);
 
@@ -79,7 +82,7 @@ export default function TimePage() {
         <div className="kpi"><span>Ist Monat</span><b>{formatMinutes(sum.actual)}</b><small>davon Reise {formatMinutes(travel)}</small></div>
         <div className="kpi"><span>Saldo Monat</span><b className={monthDiff < 0 ? 'neg' : 'pos'}>{formatMinutes(monthDiff, true)}</b><small>Ist − Soll bis heute</small></div>
         <button className="kpi link" onClick={() => setBalanceOpen(true)}><span>Überstundenkonto</span><b className={balanceEnd < 0 ? 'neg' : 'pos'}>{formatMinutes(balanceEnd, true)}</b><small>Stand anpassen ›</small></button>
-        <div className="kpi"><span>Urlaub {year}</span><b>{s.vacationDaysPerYear - vacUsed}</b><small>von {s.vacationDaysPerYear} Tagen übrig</small></div>
+        <a className="kpi link" href="#/kalender"><span>Urlaub {year}</span><b>{fmtDays(vac.remaining)}</b><small>von {s.vacationDaysPerYear} Tagen übrig ›</small></a>
       </div>
 
       <div className="card table-card">
@@ -90,10 +93,10 @@ export default function TimePage() {
               const es = byDate(d.date);
               return (
                 <tr key={d.date} className={d.target === 0 ? 'off' : ''}>
-                  <td className="day"><b>{weekdayShort(d.date)} {d.date.slice(8)}.</b>{d.holiday && <small>{d.holiday}</small>}</td>
+                  <td className="day"><b>{weekdayShort(d.date)} {d.date.slice(8)}.</b>{d.holiday && <small>{d.holiday}</small>}{d.half && <small className="half">{d.half}</small>}</td>
                   <td>
                     {es.map((e) => (
-                      <button key={e.id} className="entry" onClick={() => setEdit(e)}>
+                      <button key={e.id} className="entry" onClick={() => (e.id.startsWith('cal-') ? navigate('kalender', e.date) : setEdit(e))}>
                         {TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.kind === 'arbeit' && e.end && effectiveBreak(e, s) ? ` · ${breakLabel(e, s)}` : ''}{e.customer ? ` · ${e.customer}` : ''}
                       </button>
                     ))}

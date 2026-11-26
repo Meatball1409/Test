@@ -4,7 +4,7 @@ import { Icon } from '../icons';
 import { db, useSettings } from '../db';
 import { addDays, formatDateDE, formatMinutes, isoWeek, todayISO, weekday, weekdayShort } from '../lib/dates';
 import { holidayName } from '../lib/holidays';
-import { balanceDate, overtimeBalance, summarizeRange } from '../lib/time';
+import { balanceDate, overtimeBalance, summarizeRange, withCalendarVacation } from '../lib/time';
 import { EVENT_TYPES, TIME_KINDS } from '../lib/types';
 
 const greeting = () => { const h = new Date().getHours(); return h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend'; };
@@ -15,7 +15,9 @@ export default function Home() {
   const monday = addDays(today, -((weekday(today) + 6) % 7));
   const in14 = addDays(today, 14);
   const events = useLiveQuery(() => db.events.where('endDate').aboveOrEqual(today).filter((e) => e.startDate <= in14).sortBy('startDate'), [today]) ?? [];
-  const times = useLiveQuery(() => db.times.toArray(), []) ?? [];
+  const rawTimes = useLiveQuery(() => db.times.toArray(), []) ?? [];
+  const vacEvents = useLiveQuery(() => db.events.where('type').equals('urlaub').toArray(), []) ?? [];
+  const times = withCalendarVacation(rawTimes, vacEvents);
   const trips = useLiveQuery(() => db.trips.where('departure').aboveOrEqual(today).limit(3).toArray(), [today]) ?? [];
   const reports = useLiveQuery(() => db.reports.orderBy('updatedAt').reverse().limit(3).toArray(), []) ?? [];
 
