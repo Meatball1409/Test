@@ -335,3 +335,13 @@ a.tag:hover { text-decoration: underline; }
 .tabs { display: flex; gap: .4rem; margin-bottom: .8rem; }
 .mobile-only { display: none; }
 @media (max-width: 1099px) { .desktop-only { display: none; } .mobile-only { display: inline-flex; } }
+
+/* Zeiterfassung wie Zeitnachweis */
+.entry.k-reise { background: color-mix(in srgb, #8B5CF6 14%, var(--card)); }
+.entry.k-kunde { background: var(--accent-soft); }
+.entry.k-urlaub, .entry.k-krank { background: color-mix(in srgb, var(--pos) 14%, var(--card)); }
+.tt .note { font-size: .74rem; color: var(--muted); margin-top: .1rem; }
+.tt .day small.trip { display: block; color: #8B5CF6; font-size: .68rem; }
+.sumtable.weeks th { text-align: left; font-size: .72rem; color: var(--muted); text-transform: uppercase; padding: .3rem 0; border-bottom: 1px solid var(--line); }
+.sumtable.weeks td { font-size: .9rem; }
+@media (max-width: 640px) { .hide-sm { display: none; } .tt td, .tt th { padding: .45rem .4rem; } }

@@ -53,10 +53,15 @@ export function ReportPreview({ report, pages, maxWidth }: { report: ServiceRepo
 
 /** Druckt den Bericht in diesem Fenster (im Druckdialog „Als PDF sichern“ wählen) */
 export function printReport(html: string, title: string) {
+  printHtml(`<div class="rp">${html}</div>`, title);
+}
+
+/** Beliebiges HTML drucken (Druckdialog → „Als PDF sichern“) */
+export function printHtml(inner: string, title: string) {
   injectCss();
   let root = document.getElementById('print-root');
   if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
-  root.innerHTML = `<div class="rp">${html}</div>`;
+  root.innerHTML = inner;
   const oldTitle = document.title;
   document.title = title; // wird von vielen Browsern als Dateiname vorgeschlagen
   const imgs = [...root.querySelectorAll('img')];

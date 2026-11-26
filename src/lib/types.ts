@@ -27,9 +27,10 @@ export interface CalendarEvent {
   tripId?: string;
 }
 
-export type TimeKind = 'arbeit' | 'reise' | 'bereitschaft' | 'urlaub' | 'krank' | 'gleittag';
+export type TimeKind = 'arbeit' | 'kunde' | 'reise' | 'bereitschaft' | 'urlaub' | 'krank' | 'gleittag';
 export const TIME_KINDS: Record<TimeKind, string> = {
   arbeit: 'Arbeitszeit',
+  kunde: 'Kundenbesuch',
   reise: 'Reisezeit',
   bereitschaft: 'Bereitschaft',
   urlaub: 'Urlaub',
@@ -62,6 +63,11 @@ export interface Settings {
   companyBreakFromMin: number; // ab dieser Anwesenheit (Minuten) wird die Firmenpause abgezogen
   companyBreakStart: string; // nur zur Anzeige, z. B. 12:00
   arbzgWarnings: boolean;
+  hourFormat: 'dezimal' | 'hm'; // 7,50 wie im SAP-Zeitnachweis oder 7:30
+  glzCapMin: number; // Obergrenze Gleitzeitkonto in Minuten (0 = keine); Überschuss wird separat ausgewiesen
+  separateSunHoliday: boolean; // Sonn-/Feiertagsstunden nicht ins Gleitzeitkonto, sondern separat (Auszahlung)
+  nightStart: string;
+  nightEnd: string;
   overtimeStartBalance: number; // Minuten Übertrag
   overtimeStartDate: string;
   vacationDaysPerYear: number;
@@ -87,6 +93,11 @@ export const DEFAULT_SETTINGS: Settings = {
   companyBreakFromMin: 8 * 60,
   companyBreakStart: '12:00',
   arbzgWarnings: true,
+  hourFormat: 'dezimal',
+  glzCapMin: 150 * 60,
+  separateSunHoliday: true,
+  nightStart: '22:00',
+  nightEnd: '06:00',
   overtimeStartBalance: 0,
   overtimeStartDate: `${new Date().getFullYear()}-01-01`,
   vacationDaysPerYear: 30,

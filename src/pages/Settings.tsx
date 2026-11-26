@@ -4,7 +4,8 @@ import AccountSection from './Account';
 import { download, Field, PageHeader, pickFile, useToast } from '../components';
 import { useEffect, useState } from 'react';
 import { db, exportAll, importAll, saveSettings, storageSelfTest, useSettings } from '../db';
-import { formatDateDE, formatMinutes, todayISO } from '../lib/dates';
+import { formatDateDE, todayISO } from '../lib/dates';
+import { fmtHours } from '../lib/time';
 import { STATES, type StateCode } from '../lib/holidays';
 import { DEFAULT_SNIPPETS } from '../lib/snippets';
 
@@ -74,8 +75,14 @@ export default function SettingsPage() {
               <Field label="Ab Anwesenheit (h)"><input type="number" min={0} step={0.5} value={s.companyBreakFromMin / 60} onChange={(e) => saveSettings({ companyBreakFromMin: Math.round(Number(e.target.value) * 60) })} /></Field>
               <Field label="Pause ab Uhrzeit"><input type="time" value={s.companyBreakStart} onChange={(e) => saveSettings({ companyBreakStart: e.target.value })} /></Field>
             </>}
+            <Field label="Stunden anzeigen"><select value={s.hourFormat} onChange={(e) => saveSettings({ hourFormat: e.target.value as typeof s.hourFormat })}>
+              <option value="dezimal">Dezimal (7,50) wie SAP-Zeitnachweis</option><option value="hm">Std:Min (7:30)</option></select></Field>
+            <Field label="Obergrenze Gleitzeitkonto (Std.)" hint="Darüber wird separat ausgewiesen (Gleitzeitstunden 125 %). 0 = keine."><input type="number" min={0} step={1} value={s.glzCapMin / 60} onChange={(e) => saveSettings({ glzCapMin: Math.round(Number(e.target.value) * 60) })} /></Field>
+            <Field label="Sonn-/Feiertagsstunden separat" hint="Nicht ins Gleitzeitkonto, sondern als Überstunden Sonntag/Feiertag (wie im Zeitnachweis)"><input type="checkbox" checked={s.separateSunHoliday} onChange={(e) => saveSettings({ separateSunHoliday: e.target.checked })} /></Field>
+            <Field label="Nachtstunden von"><input type="time" value={s.nightStart} onChange={(e) => saveSettings({ nightStart: e.target.value })} /></Field>
+            <Field label="Nachtstunden bis"><input type="time" value={s.nightEnd} onChange={(e) => saveSettings({ nightEnd: e.target.value })} /></Field>
             <Field label="Hinweise Arbeitszeitgesetz" hint="> 10 h, Ruhezeit < 11 h, Sonn-/Feiertag"><input type="checkbox" checked={s.arbzgWarnings} onChange={(e) => saveSettings({ arbzgWarnings: e.target.checked })} /></Field>
-            <Field label="Überstundenstand" wide hint={`${formatMinutes(s.overtimeStartBalance, true)} h zu Beginn vom ${formatDateDE(s.overtimeStartDate)} – ändern in der Zeiterfassung über „Stand anpassen“.`}>
+            <Field label="Gleitzeitkonto" wide hint={`${fmtHours(s.overtimeStartBalance, s, true)} Std. zu Beginn vom ${formatDateDE(s.overtimeStartDate)} – ändern in der Zeiterfassung über „Gleitzeitkonto → anpassen“.`}>
               <a className="btn" href="#/zeit/stand">Stand anpassen</a></Field>
           </div>
         </section>

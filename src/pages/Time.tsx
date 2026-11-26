@@ -3,36 +3,46 @@ import { useEffect, useState } from 'react';
 import { navigate, routeParam } from '../App';
 import { download, Field, Modal, PageHeader } from '../components';
 import { db, saveSettings, useSettings } from '../db';
-import { addDays, endOfMonth, parseHours, formatDateDE, formatMinutes, MONTHS, startOfMonth, todayISO, uid, weekdayShort } from '../lib/dates';
-import { balanceDate, breakLabel, creditedMinutes, effectiveBreak, setBalanceAt, grossMinutes, overtimeBalance, summarizeRange, vacationSummary, withCalendarVacation } from '../lib/time';
+import { addDays, endOfMonth, parseHours, formatDateDE, formatMinutes, MONTHS, startOfMonth, timeToMinutes, todayISO, uid, weekdayShort } from '../lib/dates';
+import { isDomestic } from '../lib/visa';
+import { printZeitnachweis } from './Zeitnachweis';
+import { balanceDate, breakLabel, creditedMinutes, dayWork, effectiveBreak, fmtHours, glzAccount, overtimeBalance, setBalanceAt, summarizeRange, vacationSummary, weeklySums, withCalendarVacation } from '../lib/time';
 import { TIME_KINDS, type TimeEntry, type TimeKind } from '../lib/types';
 
-const TIMED: TimeKind[] = ['arbeit', 'reise', 'bereitschaft'];
+const TIMED: TimeKind[] = ['arbeit', 'kunde', 'reise', 'bereitschaft'];
 export const fmtDays = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+const hm = (m?: number) => (m === undefined ? '' : `${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
 
 export default function TimePage() {
   const s = useSettings();
+  const H = (m: number, signed = false) => fmtHours(m, s, signed);
   const [month, setMonth] = useState(startOfMonth(todayISO()));
   const [edit, setEdit] = useState<TimeEntry | null>(null);
   const [onlyFilled, setOnlyFilled] = useState(false);
   const [balanceOpen, setBalanceOpen] = useState(false);
   const loaded = useLiveQuery(() => db.times.toArray(), []);
   const vacEvents = useLiveQuery(() => db.events.where('type').equals('urlaub').toArray(), []) ?? [];
+  const trips = useLiveQuery(() => db.trips.toArray(), []) ?? [];
   const own = loaded ?? [];
   const all = withCalendarVacation(own, vacEvents);
   const to = endOfMonth(month);
   const sum = summarizeRange(month, to, all, s);
   const cutoff = balanceDate(todayISO(), all);
-  // Saldo nur bis heute (zukünftige Tage sind noch nicht „fehlend“) und erst ab Start des Überstundenkontos
-  const saldoFrom = month < s.overtimeStartDate ? s.overtimeStartDate : month;
-  const saldoTo = to < cutoff ? to : cutoff;
-  const monthDiff = saldoFrom <= saldoTo ? summarizeRange(saldoFrom, saldoTo, all, s).diff : 0;
+  // Saldo nur bis heute (zukünftige Tage sind noch nicht „fehlend“) und erst ab Start des Kontos
   const counts = (d: string) => d >= s.overtimeStartDate && d <= cutoff;
-  const balanceEnd = overtimeBalance(to < cutoff ? to : cutoff, all, s);
+  const stichtag = to < cutoff ? to : cutoff;
+  const glz = glzAccount(stichtag, all, s);
+  const monthDiff = month <= stichtag ? glz.periodSaldo : 0;
   const year = Number(month.slice(0, 4));
   const vac = vacationSummary(year, own, vacEvents, s, todayISO());
   const byDate = (d: string) => all.filter((e) => e.date === d).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
-  const travel = all.filter((e) => e.kind === 'reise' && e.date >= month && e.date <= to).reduce((a, e) => a + grossMinutes(e.start, e.end) - (e.breakMin ?? 0), 0);
+  const weeks = weeklySums(sum, (d) => d >= s.overtimeStartDate && d <= balanceDate(todayISO(), all));
+  const tripOn = (d: string) => trips.find((t) => t.departure && t.return && d >= t.departure.slice(0, 10) && d <= t.return.slice(0, 10));
+  const counted = summarizeRange(month, stichtag >= month ? stichtag : month, all, s); // Zuschläge bis Stichtag
+  // laufende Summe wie Spalte „Summe“ im Zeitnachweis
+  let running = glz.previous;
+  const runningByDate = new Map<string, number>();
+  for (const d of sum.days) { if (counts(d.date)) running += d.diff; runningByDate.set(d.date, running); }
 
   const shift = (n: number) => {
     const t = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + n;
@@ -40,19 +50,35 @@ export default function TimePage() {
   };
 
   function exportCsv() {
-    const rows = [['Datum', 'Tag', 'Art', 'Beginn', 'Ende', 'Pause (min)', 'Angerechnet (h)', 'Kunde', 'Notiz']];
-    for (const d of sum.days) for (const e of byDate(d.date))
-      rows.push([formatDateDE(e.date), weekdayShort(e.date), TIME_KINDS[e.kind], e.start ?? '', e.end ?? '', String(effectiveBreak(e, s)), (creditedMinutes(e, s) / 60).toFixed(2).replace('.', ','), e.customer ?? '', e.note ?? '']);
-    rows.push([], ['Soll', formatMinutes(sum.target)], ['Ist', formatMinutes(sum.actual)], ['Saldo Monat (bis heute)', formatMinutes(monthDiff, true)], ['Überstundenkonto', formatMinutes(balanceEnd, true)]);
+    const dec = (m: number) => (m / 60).toFixed(2).replace('.', ',');
+    const rows: string[][] = [['Datum', 'Tag', 'Art', 'von', 'bis', 'Std.', 'Soll', 'Saldo', 'Kunde', 'Notiz']];
+    for (const d of sum.days) {
+      const es = byDate(d.date);
+      if (!es.length && !d.target) continue;
+      rows.push([formatDateDE(d.date), weekdayShort(d.date), d.holiday ?? d.half ?? '', d.first !== undefined ? hm(d.first) : '', d.last !== undefined ? hm(d.last) : '', dec(d.worked), dec(d.target), counts(d.date) ? dec(d.diff) : '', '', '']);
+      for (const e of es) rows.push(['', '', TIME_KINDS[e.kind], e.start ?? '', e.end ?? '', '', '', '', e.customer ?? '', e.note ?? '']);
+    }
+    rows.push([], ['Monatssumme', '', '', '', '', dec(sum.worked), dec(sum.target), dec(monthDiff)], ['GLZ-Saldo Gesamt', dec(glz.balance)], ['Über Obergrenze', dec(glz.overCap)], ['Samstag (25 %)', dec(counted.sat)], ['Sonntag (50 %)', dec(counted.sun)], ['Feiertag (100 %)', dec(counted.hol)], ['Nachtstunden', dec(counted.night)]);
     const csv = '﻿' + rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
-    download(`Zeiten_${month.slice(0, 7)}.csv`, csv, 'text/csv;charset=utf-8');
+    download(`Zeitnachweis_${month.slice(0, 7)}.csv`, csv, 'text/csv;charset=utf-8');
   }
 
-  // Neue Einträge übernehmen die zuletzt verwendeten Zeiten (z. B. 07:00–18:00)
-  const last = [...all].filter((e) => e.kind === 'arbeit' && e.start && e.end).sort((a, b) => b.date.localeCompare(a.date))[0];
-  const newEntry = (date: string): TimeEntry => ({ id: uid(), date, kind: 'arbeit', start: last?.start ?? '07:00', end: last?.end ?? '16:00', breakMin: 0 });
+  function exportPdf() {
+    printZeitnachweis({ s, month, to, sum, byDate, glz, counted, weeks, vac, monthDiff, counts, running: runningByDate, tripOn });
+  }
 
-  // Direktaufruf: #/zeit/neu (Eintrag für heute) und #/zeit/stand (Überstundenstand)
+  // Neue Einträge: zuletzt verwendete Art/Zeiten; an einem Tag mit Einträgen beginnt der nächste Abschnitt am Ende des letzten
+  const lastUsed = [...own].filter((e) => TIMED.includes(e.kind) && e.start && e.end).sort((a, b) => b.date.localeCompare(a.date) || (b.end ?? '').localeCompare(a.end ?? ''))[0];
+  const newEntry = (date: string): TimeEntry => {
+    const sameDay = own.filter((e) => e.date === date && e.end).sort((a, b) => (b.end ?? '').localeCompare(a.end ?? ''))[0];
+    if (sameDay?.end) {
+      const st = timeToMinutes(sameDay.end), en = Math.min(st + 60, 23 * 60 + 59);
+      return { id: uid(), date, kind: sameDay.kind === 'reise' ? 'kunde' : 'reise', start: sameDay.end, end: hm(en), breakMin: 0 };
+    }
+    return { id: uid(), date, kind: lastUsed?.kind ?? 'arbeit', start: lastUsed?.start ?? '07:00', end: lastUsed?.end ?? '16:00', breakMin: 0 };
+  };
+
+  // Direktaufruf: #/zeit/neu (Eintrag für heute) und #/zeit/stand (Kontostand)
   const [handled, setHandled] = useState(false);
   useEffect(() => {
     if (handled || loaded === undefined) return;
@@ -66,7 +92,8 @@ export default function TimePage() {
   return (
     <>
       <PageHeader title="Zeiterfassung" actions={<>
-        <button className="btn" onClick={exportCsv}>Export CSV (Excel)</button>
+        <button className="btn" onClick={exportPdf}>Zeitnachweis (PDF)</button>
+        <button className="btn" onClick={exportCsv}>CSV</button>
         <button className="btn primary" onClick={() => setEdit(newEntry(todayISO() >= month && todayISO() <= to ? todayISO() : month))}>+ Eintrag</button>
       </>} />
 
@@ -78,41 +105,77 @@ export default function TimePage() {
       </div>
 
       <div className="kpis">
-        <div className="kpi"><span>Soll Monat</span><b>{formatMinutes(sum.target)}</b><small>{s.weeklyHours} h/Woche</small></div>
-        <div className="kpi"><span>Ist Monat</span><b>{formatMinutes(sum.actual)}</b><small>davon Reise {formatMinutes(travel)}</small></div>
-        <div className="kpi"><span>Saldo Monat</span><b className={monthDiff < 0 ? 'neg' : 'pos'}>{formatMinutes(monthDiff, true)}</b><small>Ist − Soll bis heute</small></div>
-        <button className="kpi link" onClick={() => setBalanceOpen(true)}><span>Überstundenkonto</span><b className={balanceEnd < 0 ? 'neg' : 'pos'}>{formatMinutes(balanceEnd, true)}</b><small>Stand anpassen ›</small></button>
-        <a className="kpi link" href="#/kalender"><span>Urlaub {year}</span><b>{fmtDays(vac.remaining)}</b><small>von {s.vacationDaysPerYear} Tagen übrig ›</small></a>
+        <div className="kpi"><span>Ist Monat</span><b>{H(sum.worked)}</b><small>Soll {H(sum.target)}</small></div>
+        <div className="kpi"><span>Saldo Monat</span><b className={monthDiff < 0 ? 'neg' : 'pos'}>{H(monthDiff, true)}</b><small>Ist − Soll bis heute</small></div>
+        <button className="kpi link" onClick={() => setBalanceOpen(true)}><span>Gleitzeitkonto</span><b className={glz.balance < 0 ? 'neg' : 'pos'}>{H(glz.balance, true)}</b><small>{s.glzCapMin ? `Obergrenze ${H(s.glzCapMin)} · ` : ''}anpassen ›</small></button>
+        {glz.overCap > 0 && <div className="kpi"><span>Über Obergrenze</span><b className="pos">{H(glz.overCap, true)}</b><small>separat (Gleitzeit 125 %)</small></div>}
+        <a className="kpi link" href="#/kalender"><span>Urlaub {year}</span><b>{fmtDays(vac.rest)}</b><small>Rest · {fmtDays(vac.planned)} verplant ›</small></a>
       </div>
 
       <div className="card table-card">
         <table className="tt">
-          <thead><tr><th>Tag</th><th>Einträge</th><th className="r">Soll</th><th className="r">Ist</th><th className="r">Saldo</th></tr></thead>
+          <thead><tr><th>Tag</th><th>Einträge</th><th className="r">Std.</th><th className="r">Soll</th><th className="r">Saldo</th><th className="r hide-sm">Summe</th></tr></thead>
           <tbody>
             {sum.days.filter((d) => !onlyFilled || byDate(d.date).length).map((d) => {
               const es = byDate(d.date);
+              const trip = tripOn(d.date);
               return (
                 <tr key={d.date} className={d.target === 0 ? 'off' : ''}>
-                  <td className="day"><b>{weekdayShort(d.date)} {d.date.slice(8)}.</b>{d.holiday && <small>{d.holiday}</small>}{d.half && <small className="half">{d.half}</small>}</td>
+                  <td className="day"><b>{weekdayShort(d.date)} {d.date.slice(8)}.</b>
+                    {d.holiday && <small>{d.holiday}</small>}{d.half && <small className="half">{d.half}</small>}
+                    {trip && <small className="trip">{isDomestic(trip.country) ? 'Dienstreise' : 'Auslandsdienstreise'}</small>}</td>
                   <td>
                     {es.map((e) => (
-                      <button key={e.id} className="entry" onClick={() => (e.id.startsWith('cal-') ? navigate('kalender', e.date) : setEdit(e))}>
-                        {TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.kind === 'arbeit' && e.end && effectiveBreak(e, s) ? ` · ${breakLabel(e, s)}` : ''}{e.customer ? ` · ${e.customer}` : ''}
+                      <button key={e.id} className={'entry k-' + e.kind} onClick={() => (e.id.startsWith('cal-') ? navigate('kalender', e.date) : setEdit(e))}>
+                        {TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.customer ? ` · ${e.customer}` : ''}
                       </button>
                     ))}
-                    <button className="entry add" onClick={() => setEdit(newEntry(d.date))} aria-label={`Eintrag am ${formatDateDE(d.date)} hinzufügen`}>+</button>
+                    <button className="entry add" onClick={() => setEdit(newEntry(d.date))} aria-label={`Abschnitt am ${formatDateDE(d.date)} hinzufügen`}>+</button>
+                    {d.breakDeducted > 0 && <div className="note">Pause {s.breakMode === 'firma' ? `${s.companyBreakStart}–${hm(timeToMinutes(s.companyBreakStart) + d.breakDeducted)}` : `${d.breakDeducted} min`} abgezogen</div>}
+                    {(d.sat > 0 || d.sun > 0 || d.hol > 0) && <div className="note">{d.sat ? 'Samstag 25 %' : d.sun ? 'Sonntag 50 % · nicht im Gleitzeitkonto' : 'Feiertag 100 % · nicht im Gleitzeitkonto'}</div>}
                     {d.warnings.map((w) => <div key={w} className="warn">⚠ {w}</div>)}
                   </td>
-                  <td className="r">{d.target ? formatMinutes(d.target) : '–'}</td>
-                  <td className="r">{d.actual ? formatMinutes(d.actual) : '–'}</td>
-                  <td className={'r ' + (counts(d.date) ? (d.diff < 0 ? 'neg' : d.diff > 0 ? 'pos' : '') : '')}>{counts(d.date) && (d.diff || d.actual) ? formatMinutes(d.diff, true) : ''}</td>
+                  <td className="r">{d.worked ? H(d.worked) : '–'}</td>
+                  <td className="r">{d.target ? H(d.target) : '–'}</td>
+                  <td className={'r ' + (counts(d.date) ? (d.diff < 0 ? 'neg' : d.diff > 0 ? 'pos' : '') : '')}>{counts(d.date) && (d.diff || d.actual) ? H(d.diff, true) : ''}</td>
+                  <td className="r hide-sm muted">{counts(d.date) ? H(runningByDate.get(d.date) ?? 0) : ''}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="muted small">{s.breakMode === 'firma' ? `Pause: ab ${s.companyBreakFromMin / 60} h Anwesenheit werden automatisch ${s.companyBreakMin} min abgezogen (${s.companyBreakStart} Uhr).` : s.breakMode === 'gesetzlich' ? 'Pausen werden mindestens auf das gesetzliche Minimum angehoben (ArbZG §4).' : 'Pausen werden wie eingetragen berücksichtigt.'} Reisezeit zählt zu {Math.round(s.travelFactor * 100)} %, Bereitschaft zu {Math.round(s.standbyFactor * 100)} %. Ändern unter Einstellungen.</p>
+
+      <div className="grid2" style={{ marginTop: '1rem' }}>
+        <section className="card">
+          <h2>Monatsübersicht zum Stichtag {formatDateDE(stichtag >= month ? stichtag : month)}</h2>
+          <table className="sumtable"><tbody>
+            <tr><td>GLZ-Saldo Vorperiode</td><td className="r">{H(glz.previous)}</td></tr>
+            <tr><td>GLZ-Saldo akt. Periode</td><td className="r">{H(glz.periodSaldo - glz.overCap, true)}</td></tr>
+            <tr className="sub"><td>GLZ-Saldo Gesamt</td><td className="r">{H(glz.balance)}</td></tr>
+            <tr><td>GLZ-Obergrenze</td><td className="r">{s.glzCapMin ? H(s.glzCapMin) : 'keine'}</td></tr>
+            <tr><td>Gleitzeitstunden 125 % (über Obergrenze)</td><td className="r">{H(glz.overCap)}</td></tr>
+            <tr><td>Überstunden Samstag 25 %</td><td className="r">{H(counted.sat)}</td></tr>
+            <tr><td>Sonntag 50 %{s.separateSunHoliday ? ' · Überstunden Sonntag' : ''}</td><td className="r">{H(counted.sun)}</td></tr>
+            <tr><td>Feiertag 100 %{s.separateSunHoliday ? ' · Überstunden Feiertag' : ''}</td><td className="r">{H(counted.hol)}</td></tr>
+            <tr><td>Nachtstunden ({s.nightStart}–{s.nightEnd})</td><td className="r">{H(counted.night)}</td></tr>
+          </tbody></table>
+        </section>
+        <section className="card">
+          <h2>Wochensummen</h2>
+          <table className="sumtable weeks"><thead><tr><th>KW</th><th>Beginn</th><th>Ende</th><th className="r">Ist</th><th className="r">Soll</th><th className="r">Saldo</th></tr></thead><tbody>
+            {weeks.map((w) => <tr key={w.kw + w.from}><td>{w.kw}</td><td>{formatDateDE(w.from).slice(0, 6)}</td><td>{formatDateDE(w.to).slice(0, 6)}</td><td className="r">{H(w.worked)}</td><td className="r">{H(w.target)}</td><td className={'r ' + (w.diff < 0 ? 'neg' : w.diff > 0 ? 'pos' : '')}>{H(w.diff, true)}</td></tr>)}
+          </tbody></table>
+          <h2 style={{ marginTop: '1.2rem' }}>Urlaub {year}</h2>
+          <table className="sumtable"><tbody>
+            <tr><td>Anspruch{vac.carryOver ? ` (inkl. ${fmtDays(vac.carryOver)} Übertrag)` : ''}</td><td className="r">{fmtDays(vac.entitlement)}</td></tr>
+            <tr><td>Verbrauch</td><td className="r">{fmtDays(vac.taken)}</td></tr>
+            <tr className="sub"><td>Rest</td><td className="r">{fmtDays(vac.rest)}</td></tr>
+            <tr><td>davon verplant</td><td className="r">{fmtDays(vac.planned)}</td></tr>
+          </tbody></table>
+        </section>
+      </div>
+      <p className="muted small">Berechnung wie im SAP-Zeitnachweis: Abschnitte (Reisezeit, Kundenbesuch, Arbeit) ergeben die Anwesenheit; Lücken dazwischen gelten als Pause{s.breakMode === 'firma' ? `, fehlt sie, werden ab ${s.companyBreakFromMin / 60} h automatisch ${s.companyBreakMin} min abgezogen` : ''}. Reisezeit {Math.round(s.travelFactor * 100)} %. {s.separateSunHoliday ? 'Sonn-/Feiertagsstunden zählen nicht zum Gleitzeitkonto, sondern separat. ' : ''}Anpassbar unter Einstellungen.</p>
 
       {edit && <EntryEditor entry={edit} onClose={() => setEdit(null)} />}
       {balanceOpen && <BalanceEditor current={overtimeBalance(addDays(todayISO(), -1), all, s)} onClose={() => setBalanceOpen(false)} />}
@@ -127,6 +190,8 @@ function EntryEditor({ entry, onClose }: { entry: TimeEntry; onClose: () => void
   const exists = useLiveQuery(() => db.times.get(entry.id), [entry.id]);
   const set = <K extends keyof TimeEntry>(k: K, v: TimeEntry[K]) => setE((x) => ({ ...x, [k]: v }));
   const timed = TIMED.includes(e.kind);
+  const others = useLiveQuery(() => db.times.where('date').equals(e.date).toArray(), [e.date]) ?? [];
+  const dayInfo = dayWork([...others.filter((o) => o.id !== e.id), e], s);
   async function save() {
     const base = timed ? e : { ...e, start: undefined, end: undefined, breakMin: undefined };
     if (!exists && !timed && until > e.date) {
@@ -145,18 +210,17 @@ function EntryEditor({ entry, onClose }: { entry: TimeEntry; onClose: () => void
       <button className="btn primary" onClick={save}>Speichern</button>
     </>}>
       <div className="form">
-        <Field label="Art"><select value={e.kind} onChange={(x) => set('kind', x.target.value as TimeKind)}>
+        <Field label="Art" hint="Mehrere Abschnitte pro Tag: z. B. Reisezeit, Kundenbesuch, Reisezeit"><select value={e.kind} onChange={(x) => set('kind', x.target.value as TimeKind)}>
           {Object.entries(TIME_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <Field label="Datum"><input type="date" value={e.date} onChange={(x) => set('date', x.target.value)} /></Field>
         {!timed && !exists && <Field label="Bis (mehrere Tage)"><input type="date" value={until} min={e.date} onChange={(x) => setUntil(x.target.value)} /></Field>}
         {timed && <>
           <Field label="Beginn"><input type="time" value={e.start ?? ''} onChange={(x) => set('start', x.target.value)} /></Field>
           <Field label="Ende"><input type="time" value={e.end ?? ''} onChange={(x) => set('end', x.target.value)} /></Field>
-          {e.kind === 'arbeit' && s.breakMode === 'firma'
-            ? <Field label="Pause"><output>{breakLabel(e, s)}</output></Field>
-            : <Field label="Pause (min)" hint={e.kind === 'arbeit' && s.breakMode === 'gesetzlich' ? `Angerechnet: ${effectiveBreak(e, s)} min` : undefined}>
-                <input type="number" min={0} step={5} value={e.breakMin ?? 0} onChange={(x) => set('breakMin', Number(x.target.value))} /></Field>}
-          <Field label="Angerechnet"><output>{formatMinutes(creditedMinutes(e, s))} h</output></Field>
+          {s.breakMode !== 'firma' && (e.kind === 'arbeit' || e.kind === 'kunde') && <Field label="Pause (min)" hint={s.breakMode === 'gesetzlich' ? `Angerechnet: ${effectiveBreak(e, s)} min` : undefined}>
+            <input type="number" min={0} step={5} value={e.breakMin ?? 0} onChange={(x) => set('breakMin', Number(x.target.value))} /></Field>}
+          <Field label="Abschnitt"><output>{fmtHours(creditedMinutes({ ...e, breakMin: 0, kind: e.kind === 'kunde' ? 'arbeit' : e.kind }, { ...s, breakMode: 'manuell' }), s)} Std.</output></Field>
+          <Field label="Tag gesamt" hint={dayInfo.breakDeducted ? `inkl. Pause ${s.breakMode === 'firma' ? breakLabel({ ...e, kind: 'arbeit', start: '00:00', end: '23:59' }, s).replace('Pause ', '') : dayInfo.breakDeducted + ' min'} abgezogen` : dayInfo.gaps ? `Lücke ${dayInfo.gaps} min = Pause` : undefined}><output>{fmtHours(dayInfo.worked, s)} Std.</output></Field>
         </>}
         <Field label="Kunde / Auftrag"><input value={e.customer ?? ''} onChange={(x) => set('customer', x.target.value)} /></Field>
         <Field label="Notiz" wide><input value={e.note ?? ''} onChange={(x) => set('note', x.target.value)} /></Field>
@@ -166,7 +230,7 @@ function EntryEditor({ entry, onClose }: { entry: TimeEntry; onClose: () => void
 }
 
 function BalanceEditor({ current, onClose }: { current: number; onClose: () => void }) {
-  const [text, setText] = useState(formatMinutes(current, true).replace('−', '-'));
+  const [text, setText] = useState(fmtHours(current, { hourFormat: 'dezimal' }).replace('−', '-'));
   const [date, setDate] = useState(todayISO());
   const minutes = parseHours(text);
   async function save() {
@@ -175,16 +239,16 @@ function BalanceEditor({ current, onClose }: { current: number; onClose: () => v
     onClose();
   }
   return (
-    <Modal title="Überstundenstand einstellen" onClose={onClose} footer={<>
+    <Modal title="Gleitzeitkonto einstellen" onClose={onClose} footer={<>
       <span className="spacer" />
       <button className="btn" onClick={onClose}>Abbrechen</button>
       <button className="btn primary" disabled={minutes === null} onClick={save}>Speichern</button>
     </>}>
       <div className="form">
-        <Field label="Aktueller Stand (Std:Min)" hint={minutes === null ? 'Bitte z. B. 23:15, -4:30 oder 12,5 eingeben' : `= ${formatMinutes(minutes, true)} h`}>
+        <Field label="GLZ-Saldo (z. B. 150,00 oder 23:15)" hint={minutes === null ? 'Bitte z. B. 150,00, 23:15, -4:30 oder 12,5 eingeben' : `= ${fmtHours(minutes, { hourFormat: 'dezimal' }, true)} Std. (${formatMinutes(minutes, true)})`}>
           <input autoFocus inputMode="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. 23:15" /></Field>
         <Field label="Stand zu Beginn von" hint="Alle Einträge ab diesem Tag werden dazugerechnet."><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-        <p className="muted small wide">Tipp: Den Stand aus deiner letzten Firmen-Abrechnung eintragen und als Datum den Tag danach wählen. Einträge vor diesem Datum zählen dann nicht mehr zum Konto.</p>
+        <p className="muted small wide">Tipp: Aus dem SAP-Zeitnachweis den Wert „GLZ-Saldo Gesamt“ zum Stichtag übernehmen (z. B. 31.10.) und als Datum den Tag danach wählen (01.11.).</p>
       </div>
     </Modal>
   );
