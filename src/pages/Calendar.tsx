@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Fragment, useState } from 'react';
 import { navigate, routeParam } from '../App';
 import { download, Field, Modal, PageHeader, pickFile, useToast } from '../components';
-import { db, useSettings } from '../db';
+import { db, saveSettings, useSettings } from '../db';
 import { addDays, formatDateDE, isoWeek, MONTHS, startOfMonth, todayISO, uid, weekday } from '../lib/dates';
 import { halfDayName, holidayName, holidays, STATES } from '../lib/holidays';
 import { vacationSummary } from '../lib/time';
@@ -23,6 +23,9 @@ export default function CalendarPage() {
   const vacEvents = useLiveQuery(() => db.events.where('type').equals('urlaub').toArray(), []) ?? [];
   const times = useLiveQuery(() => db.times.where('kind').equals('urlaub').toArray(), []) ?? [];
   const vac = vacationSummary(year, times, vacEvents, s, todayISO());
+  const prev = vacationSummary(year - 1, times, vacEvents, s, todayISO());
+  const prevHasData = prev.days.length > 0 || prev.carryOver > 0;
+  const [carryOpen, setCarryOpen] = useState(false);
   const yearHolidays = [...holidays(year, s.state).entries()].sort();
   const gridStart = addDays(month, -((weekday(month) + 6) % 7));
   const gridEnd = addDays(gridStart, 41);
@@ -71,7 +74,8 @@ export default function CalendarPage() {
           <i className="h" style={{ width: `${Math.min(100, (vac.halfTotal / vac.entitlement) * 100)}%` }} />
         </div>
         <dl className="vac-rows">
-          <div><dt>Anspruch</dt><dd>{fmtDays(vac.entitlement)}</dd></div>
+          <div><dt>Anspruch</dt><dd>{fmtDays(vac.annual)}</dd></div>
+          <div><dt>Übertrag {year - 1}</dt><dd>{vac.carryOver ? '+' + fmtDays(vac.carryOver) : '0'} <button className="icon edit" aria-label={`Resturlaub aus ${year - 1} bearbeiten`} onClick={() => setCarryOpen(true)}>✎</button></dd></div>
           <div><dt><i className="dot t" />Genommen</dt><dd>{fmtDays(vac.taken)}</dd></div>
           <div><dt><i className="dot p" />Geplant</dt><dd>{fmtDays(vac.planned)}</dd></div>
           <div><dt><i className="dot h" />24.12. + 31.12.</dt><dd>{fmtDays(vac.halfTotal)}</dd></div>
@@ -146,6 +150,8 @@ export default function CalendarPage() {
       </details>
 
       {edit && <EventEditor ev={edit} onClose={() => setEdit(null)} />}
+      {carryOpen && <CarryOverEditor year={year} current={vac.carryOver} suggestion={prevHasData ? Math.max(0, prev.remaining) : null}
+        onSave={(v) => { void saveSettings({ vacationCarryOver: { ...s.vacationCarryOver, [String(year)]: v } }); setCarryOpen(false); }} onClose={() => setCarryOpen(false)} />}
     </>
   );
 }
@@ -190,6 +196,31 @@ function EventEditor({ ev, onClose }: { ev: CalendarEvent; onClose: () => void }
         <Field label="Ort / Adresse" wide><input value={e.location ?? ''} onChange={(x) => set('location', x.target.value)} />
           {e.location && <a className="link" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location)}`} target="_blank" rel="noreferrer">In Karten öffnen ↗</a>}</Field>
         <Field label="Notizen" wide><textarea rows={3} value={e.notes ?? ''} onChange={(x) => set('notes', x.target.value)} /></Field>
+      </div>
+    </Modal>
+  );
+}
+
+function CarryOverEditor({ year, current, suggestion, onSave, onClose }: { year: number; current: number; suggestion: number | null; onSave: (v: number) => void; onClose: () => void }) {
+  const [val, setVal] = useState(String(current).replace('.', ','));
+  const n = Number(val.replace(',', '.'));
+  const valid = val.trim() !== '' && Number.isFinite(n) && n >= 0 && n <= 100 && Math.round(n * 2) === n * 2;
+  return (
+    <Modal title={`Resturlaub aus ${year - 1}`} onClose={onClose} footer={<>
+      <span className="spacer" />
+      <button className="btn" onClick={onClose}>Abbrechen</button>
+      <button className="btn primary" disabled={!valid} onClick={() => onSave(n)}>Speichern</button>
+    </>}>
+      <div className="form">
+        <Field label={`Übertragene Tage in ${year}`} hint={valid ? 'In halben Tagen, z. B. 4,5' : 'Bitte 0 bis 100 in halben Tagen eingeben, z. B. 4,5'}>
+          <input autoFocus inputMode="decimal" value={val} onChange={(e) => setVal(e.target.value)} /></Field>
+        {suggestion !== null && (
+          <div className="wide">
+            <button className="btn" onClick={() => setVal(String(suggestion).replace('.', ','))}>Rest aus {year - 1} übernehmen: {fmtDays(suggestion)} Tage</button>
+            <p className="muted small">Berechnet aus den in TechDesk eingetragenen Urlaubstagen von {year - 1}. Maßgeblich ist der Stand eurer Personalabteilung.</p>
+          </div>
+        )}
+        <p className="muted small wide">Hinweis: Übertragener Urlaub verfällt je nach Firmenregelung (gesetzlich meist zum 31.03.). Am besten den Wert aus der Lohnabrechnung oder dem Personalportal übernehmen.</p>
       </div>
     </Modal>
   );
