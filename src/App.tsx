@@ -7,6 +7,7 @@ import TimePage from './pages/Time';
 import Reports from './pages/Reports';
 import Snippets from './pages/Snippets';
 import Trips from './pages/Trips';
+import Visa from './pages/Visa';
 import SettingsPage from './pages/Settings';
 
 const ROUTES = [
@@ -16,6 +17,7 @@ const ROUTES = [
   { id: 'berichte', label: 'Berichte', icon: 'report', C: Reports },
   { id: 'texte', label: 'FSM-Texte', icon: 'text', C: Snippets },
   { id: 'reisen', label: 'Reisen', icon: 'plane', C: Trips },
+  { id: 'visa', label: 'Visa', icon: 'globe', C: Visa },
   { id: 'einstellungen', label: 'Einstellungen', icon: 'settings', C: SettingsPage },
 ] as const satisfies readonly { id: string; label: string; icon: IconName; C: () => JSX.Element }[];
 
@@ -36,7 +38,10 @@ export default function App() {
     <div className="shell">
       <header className="topbar">
         <a href="#/home" className="topbar-brand" aria-label="Startseite"><Logo height={22} /></a>
-        <span className="app-tag">TechDesk</span>
+        <div className="topbar-actions">
+          <span className="app-tag">TechDesk</span>
+          <a href="#/einstellungen" aria-label="Einstellungen"><Icon name="settings" size={22} /></a>
+        </div>
       </header>
       <nav className="nav" aria-label="Hauptnavigation">
         <a href="#/home" className="brand" aria-label="Startseite">

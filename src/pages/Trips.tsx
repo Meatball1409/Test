@@ -6,6 +6,8 @@ import { db, useSettings } from '../db';
 import { formatDateDE, todayISO, uid } from '../lib/dates';
 import { DEFAULT_CHECKLIST, EXPENSE_CATEGORIES, tripCosts } from '../lib/travel';
 import type { Trip } from '../lib/types';
+import { aaUrl, allowance, COUNTRIES, entriesFor, fallbackHint, isDomestic, onSite } from '../lib/visa';
+import { VisaCard } from './Visa';
 
 const TRANSPORT: Record<Trip['transport'], string> = { auto: 'Privat-PKW', firmenwagen: 'Firmenwagen', flug: 'Flug', bahn: 'Bahn' };
 
@@ -47,7 +49,7 @@ function TripEditor({ param }: { param: string }) {
         created.current = true;
         const d = todayISO();
         const trip: Trip = {
-          id: uid(), title: '', customer: '', destination: '', country: 'DE', departure: `${d}T06:00`, return: `${d}T18:00`,
+          id: uid(), title: '', customer: '', destination: '', country: 'Deutschland', departure: `${d}T06:00`, return: `${d}T18:00`,
           transport: 'firmenwagen', km: 0, breakfasts: 0, lunches: 0, dinners: 0,
           checklist: DEFAULT_CHECKLIST.map((text) => ({ id: uid(), text, done: false })), expenses: [],
         };
@@ -74,7 +76,7 @@ function TripEditor({ param }: { param: string }) {
     ['Restaurants', `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('Restaurant ' + t.destination)}`],
     ['Tankstellen', `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('Tankstelle ' + t.destination)}`],
     ['Wetter', `https://www.google.com/search?q=${encodeURIComponent('Wetter ' + t.destination)}`],
-    ...(t.country && t.country.toUpperCase() !== 'DE' ? [['Reise- & Sicherheitshinweise (AA)', 'https://www.auswaertiges-amt.de/de/ReiseUndSicherheit/reise-und-sicherheitshinweise']] : []),
+    ...(!isDomestic(t.country) ? [['Reise- & Sicherheitshinweise (AA)', aaUrl(t.country)]] : []),
     ...(t.transport === 'bahn' ? [['DB Verbindung', 'https://www.bahn.de/']] : []),
   ] : [];
 
@@ -120,7 +122,8 @@ function TripEditor({ param }: { param: string }) {
               <Field label="Bezeichnung" wide><input value={t.title} onChange={(e) => set('title', e.target.value)} placeholder="z. B. Inbetriebnahme Kunde XY" /></Field>
               <Field label="Kunde"><input value={t.customer} onChange={(e) => set('customer', e.target.value)} /></Field>
               <Field label="Zieladresse"><input value={t.destination} onChange={(e) => set('destination', e.target.value)} placeholder="Straße, PLZ Ort" /></Field>
-              <Field label="Land (ISO)"><input value={t.country} maxLength={2} onChange={(e) => set('country', e.target.value.toUpperCase())} /></Field>
+              <Field label="Land"><input list="countries" value={t.country === 'DE' ? 'Deutschland' : t.country} onChange={(e) => set('country', e.target.value)} placeholder="z. B. USA" />
+                <datalist id="countries">{COUNTRIES.map((c) => <option key={c} value={c} />)}</datalist></Field>
               <Field label="Verkehrsmittel"><select value={t.transport} onChange={(e) => set('transport', e.target.value as Trip['transport'])}>
                 {Object.entries(TRANSPORT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
               <Field label="Abfahrt"><input type="datetime-local" value={t.departure} onChange={(e) => set('departure', e.target.value)} /></Field>
@@ -133,6 +136,9 @@ function TripEditor({ param }: { param: string }) {
             </div>
             {links.length > 0 && <div className="links">{links.map(([l, u]) => <a key={l} className="btn small" href={u} target="_blank" rel="noreferrer">{l} ↗</a>)}</div>}
           </section>
+
+          {!isDomestic(t.country) && <EntryInfo trip={t} onApplyAllowance={(full, partial) => setT({ ...t, mealFullOverride: full, mealPartialOverride: partial })}
+            onAddChecklist={(items) => setT({ ...t, checklist: [...t.checklist, ...items.filter((x) => !t.checklist.some((c) => c.text === x)).map((text) => ({ id: uid(), text, done: false }))] })} />}
 
           <section className="card">
             <div className="card-head"><h2>Packliste</h2><small className="muted">{t.checklist.filter((c) => c.done).length}/{t.checklist.length} erledigt</small></div>
@@ -171,7 +177,7 @@ function TripEditor({ param }: { param: string }) {
               <Field label="Gestellte Frühstücke"><input type="number" min={0} value={t.breakfasts} onChange={(e) => set('breakfasts', Number(e.target.value))} /></Field>
               <Field label="Gestellte Mittagessen"><input type="number" min={0} value={t.lunches} onChange={(e) => set('lunches', Number(e.target.value))} /></Field>
               <Field label="Gestellte Abendessen"><input type="number" min={0} value={t.dinners} onChange={(e) => set('dinners', Number(e.target.value))} /></Field>
-              {t.country !== 'DE' && <>
+              {!isDomestic(t.country) && <>
                 <Field label="Auslandspauschale 24 h" hint="Länderwert lt. BMF-Tabelle"><input type="number" step="0.5" value={t.mealFullOverride ?? ''} onChange={(e) => set('mealFullOverride', e.target.value === '' ? undefined : Number(e.target.value))} /></Field>
                 <Field label="Auslandspauschale An-/Abreise"><input type="number" step="0.5" value={t.mealPartialOverride ?? ''} onChange={(e) => set('mealPartialOverride', e.target.value === '' ? undefined : Number(e.target.value))} /></Field>
               </>}
@@ -190,5 +196,36 @@ function TripEditor({ param }: { param: string }) {
       </div>
       <button className="btn danger" onClick={async () => { if (confirm('Reise löschen?')) { await db.trips.delete(t.id); await db.events.delete('trip-' + t.id); navigate('reisen'); } }}>Reise löschen</button>
     </>
+  );
+}
+
+function EntryInfo({ trip, onApplyAllowance, onAddChecklist }: { trip: Trip; onApplyAllowance: (full: number, partial: number) => void; onAddChecklist: (items: string[]) => void }) {
+  const entries = entriesFor(trip.country);
+  const sp = allowance(entries[0]?.c ?? trip.country);
+  const site = onSite(entries[0]?.c ?? trip.country);
+  const hint = entries.length ? undefined : fallbackHint(trip.country);
+  const todo = [
+    ...entries.filter((e) => e.cat !== 'vf').map((e) => `${e.what} – ${e.c} (${e.fee})${e.cat === 'card' ? ' kurz vor Abreise ausfüllen' : ' beantragen'}`),
+    ...(site && site.adapter.tone !== 'ok' ? [`Reiseadapter ${site.adapter.text.replace(/^(Nötig|Empfohlen) /, '')}`] : []),
+    ...(site?.lowVoltage ? [`Nur Geräte für 100–240 V (${site.voltage} V vor Ort)`] : []),
+  ];
+  const applied = sp && trip.mealFullOverride === sp.full && trip.mealPartialOverride === sp.partial;
+  return (
+    <section className="card">
+      <div className="card-head"><h2>Einreise & Vor Ort · {trip.country}</h2><a className="btn ghost small" href="#/visa">Visa-Kompass</a></div>
+      {entries.length > 0 ? (
+        <div className="cards visa-grid">{entries.map((e, i) => <VisaCard key={e.c + e.cat} d={e} showInfo={i === 0} compact />)}</div>
+      ) : hint ? (
+        <p className={'result ' + (hint.kind === 'warning' ? 'bad' : hint.kind === 'embassy' ? 'warn' : 'ok')}>
+          {hint.kind === 'warning' ? <>Reise- oder Teilreisewarnung – <a href={aaUrl(hint.country)} target="_blank" rel="noreferrer">Hinweise des Auswärtigen Amts</a> lesen.</>
+            : hint.kind === 'embassy' ? 'Visum nur über Botschaft oder Konsulat.' : 'Visumfrei für Kurzaufenthalte – keine Vorab-Anmeldung nötig.'}
+        </p>
+      ) : <p className="muted">Land nicht im Visa-Kompass. Bitte beim <a href="https://www.auswaertiges-amt.de/de/reiseundsicherheit" target="_blank" rel="noreferrer">Auswärtigen Amt</a> prüfen.</p>}
+      <div className="row" style={{ marginTop: '.8rem' }}>
+        {sp && <button className="btn" disabled={applied} onClick={() => onApplyAllowance(sp.full, sp.partial)}>{applied ? '✓ BMF-Pauschale übernommen' : `BMF-Pauschale übernehmen (${sp.full} / ${sp.partial} €)`}</button>}
+        {sp?.cities.map((c) => <button key={c.name} className="btn small" onClick={() => onApplyAllowance(c.full, c.partial)}>{c.name}: {c.full} / {c.partial} €</button>)}
+        {todo.length > 0 && <button className="btn" onClick={() => onAddChecklist(todo)}>Einreise-Punkte in Packliste</button>}
+      </div>
+    </section>
   );
 }
