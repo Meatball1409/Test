@@ -16,7 +16,7 @@
     --accent: #5B9FDB; --accent-soft: #17294A; --pos: #4ADE80; --neg: #F87171; --warn-bg: #2E2410; --warn: #FCD34D;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3); --nav-bg: rgba(20, 28, 47, .85); color-scheme: dark;
   }
-  .logo-img { background: #fff; padding: 4px 8px; border-radius: 8px; box-sizing: content-box; }
+  .logo-img.custom { background: #fff; padding: 4px 8px; border-radius: 8px; box-sizing: content-box; }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
@@ -28,6 +28,7 @@ a { color: var(--accent); }
 .muted { color: var(--muted); margin: .2rem 0 0; }
 .small { font-size: .82rem; }
 .logo-img { display: block; width: auto; }
+picture { display: block; line-height: 0; }
 .wordmark { font-weight: 800; letter-spacing: .16em; color: var(--navy); line-height: 1; }
 @media (prefers-color-scheme: dark) { .wordmark { color: #fff; } }
 .app-tag { font-size: .68rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
