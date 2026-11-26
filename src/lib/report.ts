@@ -14,7 +14,7 @@ export function emptyReport(id: string, technician = ''): ServiceReport {
   };
 }
 
-const filled = (items: NumberedItem[]) => items.filter((i) => i.title.trim() || i.text.trim());
+const filled = (items: NumberedItem[]) => items.filter((i) => i.title.trim() || i.text.trim() || (i.photos?.length ?? 0) > 0);
 
 /** Felder, die im Bericht noch fehlen (werden im FSM-Text als [___] markiert) */
 export function missingFields(r: ServiceReport): string[] {
@@ -65,12 +65,22 @@ export function fsmText(r: ServiceReport): string {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const paras = (s: string) => esc(v(s)).split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-function chunk<T>(a: T[], n: number): T[][] { const o: T[][] = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; }
 
 export interface Branding { companyName: string; logoDataUrl?: string }
 
 /** Kunden-Version als druckfertiges HTML (A4). Über „Drucken → Als PDF speichern“ wird daraus die PDF. */
-export function customerHtml(r: ServiceReport, b: Branding, summary?: { problem: string; cause: string; result: string }): string {
+export function customerHtml(r: ServiceReport, b: Branding, summary = r.summary): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${fileName(r)}</title><style>${REPORT_CSS}</style></head><body>${reportPages(r, b, summary)}</body></html>`;
+}
+
+export function fileName(r: ServiceReport, ext = ''): string {
+  const clean = (x: string) => x.trim().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_|_$/g, '');
+  const date = (r.departure || r.arrival) ? (r.departure || r.arrival)!.split('-').reverse().join('.') : new Date().toLocaleDateString('de-DE');
+  return ['Service_Report', clean(r.customer || 'Customer'), clean(r.site), date].filter(Boolean).join('_') + ext;
+}
+
+/** Nur die Seiten (ohne <html>) – für Vorschau und Druck innerhalb der App */
+export function reportPages(r: ServiceReport, b: Branding, summary = r.summary): string {
   const logo = (h: string, size: string) => b.logoDataUrl
     ? `<img src="${b.logoDataUrl}" alt="${esc(b.companyName)}" style="height:${h};width:auto;display:block">`
     : `<span class="logo" style="font-size:${size}">${esc(b.companyName || 'SERVICE')}</span>`;
@@ -99,8 +109,22 @@ export function customerHtml(r: ServiceReport, b: Branding, summary?: { problem:
   const page2 = shell(sum + sec(n(1), 'General information') + `<div class="card"><table class="info">${info}</table></div>`
     + sec(n(2), 'Initial situation and objective') + `<div class="card">${paras(r.initialSituation)}</div>`);
 
-  const findings = chunk(filled(r.findings), 3).map((grp, gi) => shell(sec(n(3), 'Findings and work carried out' + (gi ? ' (cont.)' : ''))
-    + grp.map((f, i) => `<div class="card finding" style="grid-template-columns:13mm 1fr"><span class="num">${pad2(gi * 3 + i + 1)}</span><div><h4>${esc(v(f.title))}</h4>${paras(f.text)}</div></div>`).join('')));
+  // Feststellungen: max. 3 pro Seite; mit Foto → Foto-Spalte wie in der Vorlage, weitere Fotos als Reihe darunter
+  const findingCard = (f: NumberedItem, num: number) => {
+    const photos = (f.photos ?? []).filter(Boolean);
+    const extra = photos.slice(1);
+    const body = `<div><h4>${esc(v(f.title))}</h4>${f.text.trim() ? paras(f.text) : ''}${extra.length ? `<div class="photo-row">${extra.map((p) => `<div class="photo sm"><img src="${p}" alt=""></div>`).join('')}</div>` : ''}</div>`;
+    return photos.length
+      ? `<div class="card finding"><span class="num">${pad2(num)}</span>${body}<div class="photo"><img src="${photos[0]}" alt=""></div></div>`
+      : `<div class="card finding" style="grid-template-columns:13mm 1fr"><span class="num">${pad2(num)}</span>${body}</div>`;
+  };
+  const perPage = (f: NumberedItem[]) => (f.some((x) => (x.photos?.length ?? 0) > 1) ? 2 : 3);
+  const fl = filled(r.findings);
+  const groups: NumberedItem[][] = [];
+  for (let i = 0; i < fl.length;) { const n2 = perPage(fl.slice(i, i + 3)); groups.push(fl.slice(i, i + n2)); i += n2; }
+  let counter = 0;
+  const findings = groups.map((grp, gi) => shell(sec(n(3), 'Findings and work carried out' + (gi ? ' (cont.)' : ''))
+    + grp.map((f) => findingCard(f, ++counter)).join('')));
 
   const recs = filled(r.recommendations);
   const open = r.openItems.filter((o) => o.trim());
@@ -109,7 +133,7 @@ export function customerHtml(r: ServiceReport, b: Branding, summary?: { problem:
     + `<div class="card"><p><b>${esc(v(r.conclusion))}</b></p>${open.length ? `<h3 style="margin-top:4mm">Open items</h3><ul class="open">${open.map((o) => `<li>${esc(o)}</li>`).join('')}</ul>` : ''}
     <div class="sign"><div>Service technician</div><div>Customer representative</div></div></div>`);
 
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Service_Report_${esc(r.customer || 'Customer')}</title><style>${REPORT_CSS}</style></head><body>${cover}${page2}${findings.join('')}${last}</body></html>`;
+  return `${cover}${page2}${findings.join('')}${last}`;
 }
 
 export const REPORT_CSS = `@page { size: A4; margin: 0; }
@@ -149,6 +173,10 @@ table.info td:last-child { color:var(--navy); font-weight:500; }
 .finding { display:grid; grid-template-columns:13mm 1fr 58mm; gap:5mm; align-items:start; }
 .finding .num, .rec .num { font-size:20pt; font-weight:800; color:var(--accent); line-height:1; }
 .finding h4, .rec h4 { font-size:11pt; color:var(--navy); margin-bottom:1.4mm; }
+.photo { height:40mm; border-radius:1.6mm; background:#EEF1F6; overflow:hidden; }
+.photo img { width:100%; height:100%; object-fit:cover; display:block; }
+.photo-row { display:grid; grid-template-columns:repeat(3, 1fr); gap:3mm; margin-top:3mm; }
+.photo.sm { height:30mm; }
 .rec { display:grid; grid-template-columns:13mm 1fr; gap:5mm; }
 ul.open { list-style:none; }
 ul.open li { padding-left:5mm; position:relative; margin-top:1.2mm; }
@@ -157,3 +185,20 @@ ul.open li::before { content:''; position:absolute; left:0; top:2mm; width:1.6mm
 .sign div { border-top:.3mm solid var(--navy); padding-top:1.6mm; font-size:8pt; color:var(--muted); margin-top:14mm; }
 .footer { position:absolute; left:16mm; right:16mm; bottom:9mm; display:flex; justify-content:space-between; align-items:center; font-size:7.5pt; color:var(--muted); border-top:.25mm solid var(--line); padding-top:3mm; }
 .footer .logo { font-size:8.5pt; }`;
+
+/** CSS der Vorlage auf einen Container begrenzen (für Vorschau/Druck innerhalb der App) */
+export function scopedReportCss(scope: string): string {
+  return REPORT_CSS.split('}').map((rule) => {
+    const i = rule.indexOf('{');
+    if (i < 0) return '';
+    const sel = rule.slice(0, i).trim(), body = rule.slice(i);
+    if (!sel || sel.startsWith('@page')) return '';
+    const scoped = sel.split(',').map((x) => {
+      const t = x.trim();
+      if (t === ':root' || t === 'body') return scope;
+      if (t === '*') return `${scope} *`;
+      return `${scope} ${t}`;
+    }).join(', ');
+    return `${scoped} ${body}}`;
+  }).join('\n');
+}

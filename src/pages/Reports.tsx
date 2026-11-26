@@ -1,171 +1,266 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { navigate, routeParam } from '../App';
+import { logoDataUrl, useLogoUrl } from '../brand';
 import { CopyButton, Empty, Field, Modal, PageHeader, useToast } from '../components';
-import { logoDataUrl } from '../brand';
 import { db, useSettings } from '../db';
-import { formatDateDE, uid } from '../lib/dates';
+import { formatDateDE, todayISO, uid } from '../lib/dates';
+import { compressImage, pickImages } from '../lib/images';
 import { downloadPptx } from '../lib/pptx';
-import { customerHtml, emptyReport, fsmText, missingFields } from '../lib/report';
+import { emptyReport, fileName, fsmText, missingFields, reportPages } from '../lib/report';
 import { fillTemplate, placeholders } from '../lib/templates';
 import type { NumberedItem, ServiceReport } from '../lib/types';
+import { printReport, ReportPreview } from './ReportDoc';
+
+const ASSIGNMENTS = ['Repair', 'Preventive maintenance', 'Commissioning', 'Installation', 'Training', 'Format change', 'Retrofit', 'Remote support', 'Inspection'];
+
+export const periodText = (a?: string, d?: string) =>
+  !a ? '' : !d || d === a ? formatDateDE(a) : `${formatDateDE(a)} - ${formatDateDE(d)}`;
 
 export default function Reports() {
   const param = routeParam();
   const reports = useLiveQuery(() => db.reports.orderBy('updatedAt').reverse().toArray(), []) ?? [];
   const [q, setQ] = useState('');
-  if (param) return <ReportEditor param={param} />;
+  const [creating, setCreating] = useState(() => param.startsWith('neu'));
+  if (param && !param.startsWith('neu')) return <ReportEditor id={param} />;
   const list = reports.filter((r) => [r.topic, r.customer, r.site, r.machineNumbers].join(' ').toLowerCase().includes(q.toLowerCase()));
   return (
     <>
-      <PageHeader title="Serviceberichte" sub="Struktur: General information · Initial situation · Findings · Recommendations · Conclusion"
-        actions={<button className="btn primary" onClick={() => navigate('berichte', 'neu')}>+ Neuer Bericht</button>} />
+      <PageHeader title="Serviceberichte" sub="Neuer Bericht → Kopf mit Kunde, Maschine, Zeitraum → Texte und Fotos ergänzen → als PDF, PowerPoint oder FSM-Text exportieren"
+        actions={<button className="btn primary" onClick={() => setCreating(true)}>+ Neuer Bericht</button>} />
       <input className="search" placeholder="Suchen (Kunde, Maschine, Thema) …" value={q} onChange={(e) => setQ(e.target.value)} />
-      {list.length === 0 ? <Empty>Noch keine Berichte. Lege den ersten an – der FSM-Text entsteht automatisch beim Tippen.</Empty> : (
+      {list.length === 0 ? <Empty>Noch keine Berichte. Tippe auf „+ Neuer Bericht“.</Empty> : (
         <div className="cards">
           {list.map((r) => (
             <button key={r.id} className="card item" onClick={() => navigate('berichte', r.id)}>
-              <b>{r.topic || 'Ohne Titel'}</b>
-              <span>{r.customer || '—'}{r.site ? ` · ${r.site}` : ''}</span>
-              <small>{r.machineNumbers} · geändert {formatDateDE(r.updatedAt.slice(0, 10))} · {missingFields(r).length ? `${missingFields(r).length} Angaben fehlen` : 'vollständig'}</small>
+              <b>{r.customer || 'Ohne Kunde'}{r.site ? ` · ${r.site}` : ''}</b>
+              <span>{r.topic || r.assignmentType || 'Servicebericht'} · Masch.-Nr. {r.machineNumbers || '—'}</span>
+              <small>{r.servicePeriod || '—'} · {r.findings.filter((f) => f.title || f.text || f.photos?.length).length} Feststellungen · {missingFields(r).length ? `${missingFields(r).length} Angaben fehlen` : 'vollständig'}</small>
             </button>
           ))}
         </div>
       )}
+      {creating && <HeaderDialog onClose={() => { setCreating(false); if (param) navigate('berichte'); }} onSave={async (r) => { await db.reports.add(r); navigate('berichte', r.id); }} />}
     </>
   );
 }
 
-function ReportEditor({ param }: { param: string }) {
+/** Kopfdaten: beim Anlegen und zum Bearbeiten */
+function HeaderDialog({ initial, onClose, onSave }: { initial?: ServiceReport; onClose: () => void; onSave: (r: ServiceReport) => void | Promise<void> }) {
+  const s = useSettings();
+  const [r, setR] = useState<ServiceReport>(() => {
+    if (initial) return initial;
+    const rep = emptyReport(uid(), s.name);
+    rep.arrival = todayISO(); rep.departure = todayISO();
+    rep.findings = [];
+    return rep;
+  });
+  // Vorbelegung aus einem Kalender-Einsatz (#/berichte/neu?event=…)
+  useEffect(() => {
+    if (initial) return;
+    const evId = new URLSearchParams(routeParam().split('?')[1] ?? '').get('event');
+    if (evId) void db.events.get(evId).then((ev) => ev && setR((x) => ({ ...x, customer: ev.customer ?? '', site: ev.location ?? '', machineNumbers: ev.machine ?? '', topic: ev.title, arrival: ev.startDate, departure: ev.endDate })));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = <K extends keyof ServiceReport>(k: K, v: ServiceReport[K]) => setR((x) => ({ ...x, [k]: v }));
+  const valid = r.customer.trim() && r.machineNumbers.trim() && r.arrival;
+  async function save() {
+    if (!valid) return;
+    const dep = r.departure && r.departure >= r.arrival! ? r.departure : r.arrival;
+    await onSave({ ...r, departure: dep, servicePeriod: periodText(r.arrival, dep), technicians: r.technicians || s.name, updatedAt: new Date().toISOString() });
+  }
+  return (
+    <Modal title={initial ? 'Berichtskopf bearbeiten' : 'Neuer Servicebericht'} onClose={onClose} footer={<>
+      <span className="spacer" />
+      <button className="btn" onClick={onClose}>Abbrechen</button>
+      <button className="btn primary" disabled={!valid} onClick={save}>{initial ? 'Übernehmen' : 'Bericht anlegen'}</button>
+    </>}>
+      <div className="form">
+        <Field label="Kunde *"><input autoFocus value={r.customer} onChange={(e) => set('customer', e.target.value)} placeholder="z. B. Musterfood GmbH" /></Field>
+        <Field label="Standort"><input value={r.site} onChange={(e) => set('site', e.target.value)} placeholder="z. B. Kempten" /></Field>
+        <Field label="Maschinennummer(n) *"><input value={r.machineNumbers} onChange={(e) => set('machineNumbers', e.target.value)} placeholder="z. B. 123456" /></Field>
+        <Field label="Maschine / Anlage"><input value={r.equipment} onChange={(e) => set('equipment', e.target.value)} placeholder="z. B. Thermoforming packaging machine R 245" /></Field>
+        <Field label="Anreise / Beginn *"><input type="date" value={r.arrival ?? ''} onChange={(e) => setR((x) => ({ ...x, arrival: e.target.value, departure: !x.departure || x.departure < e.target.value ? e.target.value : x.departure }))} /></Field>
+        <Field label="Abreise / Ende"><input type="date" value={r.departure ?? ''} min={r.arrival} onChange={(e) => set('departure', e.target.value)} /></Field>
+        <Field label="Einsatzart"><input list="assign" value={r.assignmentType} onChange={(e) => set('assignmentType', e.target.value)} placeholder="z. B. Repair" />
+          <datalist id="assign">{ASSIGNMENTS.map((x) => <option key={x} value={x} />)}</datalist></Field>
+        <Field label="Servicetechniker"><input value={r.technicians} onChange={(e) => set('technicians', e.target.value)} placeholder={s.name || 'Name'} /></Field>
+        <Field label="Thema / Titel (optional)" wide><input value={r.topic} onChange={(e) => set('topic', e.target.value)} placeholder="z. B. Sealing problems on lane 2" /></Field>
+        <p className="muted small wide">Daraus entsteht der Berichtskopf mit Logo (Deckblatt). Texte und Fotos fügst du danach hinzu. Pflichtfelder: *</p>
+      </div>
+    </Modal>
+  );
+}
+
+function ReportEditor({ id }: { id: string }) {
   const s = useSettings();
   const toast = useToast();
-  const [r, setR] = useState<ServiceReport | null>(null);
-  const [summary, setSummary] = useState({ problem: '', cause: '', result: '' });
+  const logo = useLogoUrl();
+  const [r, setR] = useState<ServiceReport | null | undefined>(undefined);
+  const [headerOpen, setHeaderOpen] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const [tab, setTab] = useState<'doc' | 'fsm'>('doc');
   const [snippetFor, setSnippetFor] = useState<{ list: 'findings' | 'recommendations'; i: number } | null>(null);
+  const [busy, setBusy] = useState('');
 
-  const created = useRef(false);
-  useEffect(() => {
-    (async () => {
-      if (param.startsWith('neu')) {
-        if (created.current) return;
-        created.current = true;
-        const rep = emptyReport(uid(), s.name);
-        const evId = new URLSearchParams(param.split('?')[1] ?? '').get('event');
-        const ev = evId ? await db.events.get(evId) : undefined;
-        if (ev) Object.assign(rep, {
-          topic: ev.title, customer: ev.customer ?? '', site: ev.location ?? '', machineNumbers: ev.machine ?? '',
-          servicePeriod: ev.startDate === ev.endDate ? formatDateDE(ev.startDate) : `${formatDateDE(ev.startDate)} - ${formatDateDE(ev.endDate)}`,
-        });
-        await db.reports.add(rep);
-        history.replaceState(null, '', `#/berichte/${rep.id}`);
-        setR(rep);
-      } else setR((await db.reports.get(param)) ?? null);
-    })();
-  }, [param]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Autospeichern (debounced)
+  useEffect(() => { void db.reports.get(id).then((x) => setR(x ?? null)); }, [id]);
+  // Automatisch speichern
   useEffect(() => {
     if (!r) return;
-    const t = setTimeout(() => db.reports.put({ ...r, updatedAt: new Date().toISOString() }), 400);
+    const t = setTimeout(() => void db.reports.put({ ...r, updatedAt: new Date().toISOString() }), 400);
     return () => clearTimeout(t);
   }, [r]);
 
   const text = useMemo(() => (r ? fsmText(r) : ''), [r]);
-  if (!r) return <Empty>Bericht wird geladen …</Empty>;
+  if (r === undefined) return <Empty>Bericht wird geladen …</Empty>;
+  if (r === null) return <Empty>Bericht nicht gefunden. <a href="#/berichte">Zur Übersicht</a></Empty>;
   const missing = missingFields(r);
   const set = <K extends keyof ServiceReport>(k: K, v: ServiceReport[K]) => setR({ ...r, [k]: v });
   const setItem = (list: 'findings' | 'recommendations', i: number, patch: Partial<NumberedItem>) =>
-    set(list, r[list].map((x, j) => (j === i ? { ...x, ...patch } : x)));
+    setR((x) => x && ({ ...x, [list]: x[list].map((it, j) => (j === i ? { ...it, ...patch } : it)) }));
   const move = (list: 'findings' | 'recommendations', i: number, d: number) => {
     const a = [...r[list]]; const j = i + d;
     if (j < 0 || j >= a.length) return;
     [a[i], a[j]] = [a[j], a[i]]; set(list, a);
   };
+  const add = (list: 'findings' | 'recommendations', item: NumberedItem = { title: '', text: '' }) => setR((x) => x && ({ ...x, [list]: [...x[list], item] }));
 
-  async function openPdf() {
-    const w = window.open('', '_blank');
-    if (!w) { toast('Pop-up blockiert – bitte erlauben'); return; }
-    w.document.write(customerHtml(r!, { companyName: s.companyName, logoDataUrl: await logoDataUrl(s.logoDataUrl) }, summary));
-    w.document.close();
-    setTimeout(() => w.print(), 500);
+  async function addPhotos(i: number | null) {
+    const files = await pickImages();
+    if (!files.length) return;
+    setBusy('Fotos werden verarbeitet …');
+    try {
+      const photos = await Promise.all(files.map((f) => compressImage(f)));
+      if (i === null) add('findings', { title: '', text: '', photos });
+      else setR((x) => x && ({ ...x, findings: x.findings.map((it, j) => (j === i ? { ...it, photos: [...(it.photos ?? []), ...photos] } : it)) }));
+    } catch (e) { toast((e as Error).message); }
+    setBusy('');
   }
 
-  const items = (list: 'findings' | 'recommendations', label: string) => (
-    <>
-      {r[list].map((x, i) => (
-        <div key={i} className="item-edit">
-          <div className="item-head">
-            <span className="num">{String(i + 1).padStart(2, '0')}</span>
-            <input placeholder={`${label} – Titel`} value={x.title} onChange={(e) => setItem(list, i, { title: e.target.value })} />
-            <button className="icon" title="Nach oben" onClick={() => move(list, i, -1)}>↑</button>
-            <button className="icon" title="Nach unten" onClick={() => move(list, i, 1)}>↓</button>
-            <button className="icon" title="Entfernen" onClick={() => set(list, r[list].filter((_, j) => j !== i))}>✕</button>
-          </div>
-          <textarea rows={3} placeholder="Kurz und sachlich, in Englisch" value={x.text} onChange={(e) => setItem(list, i, { text: e.target.value })} />
-          <button className="btn ghost small" onClick={() => setSnippetFor({ list, i })}>❝ Textbaustein einfügen</button>
+  const branding = { companyName: s.companyName, logoDataUrl: logo };
+  const exportPdf = () => printReport(reportPages(r, branding), fileName(r));
+  async function exportPptx() {
+    setBusy('PowerPoint wird erstellt …');
+    try { await downloadPptx(r!, { companyName: s.companyName, logoDataUrl: await logoDataUrl(s.logoDataUrl) }); } catch (e) { toast('Fehler: ' + (e as Error).message); }
+    setBusy('');
+  }
+
+  const items = (list: 'findings' | 'recommendations', label: string) => r[list].map((x, i) => (
+    <div key={i} className="item-edit">
+      <div className="item-head">
+        <span className="num">{String(i + 1).padStart(2, '0')}</span>
+        <input placeholder={`${label} – Titel`} value={x.title} onChange={(e) => setItem(list, i, { title: e.target.value })} />
+        <button className="icon" title="Nach oben" onClick={() => move(list, i, -1)}>↑</button>
+        <button className="icon" title="Nach unten" onClick={() => move(list, i, 1)}>↓</button>
+        <button className="icon" title="Entfernen" onClick={() => { if (!(x.title || x.text || x.photos?.length) || confirm('Diesen Punkt entfernen?')) set(list, r[list].filter((_, j) => j !== i)); }}>✕</button>
+      </div>
+      <textarea rows={3} placeholder="Kurz und sachlich, in Englisch" value={x.text} onChange={(e) => setItem(list, i, { text: e.target.value })} />
+      {list === 'findings' && (x.photos?.length ?? 0) > 0 && (
+        <div className="thumbs">
+          {x.photos!.map((p, k) => (
+            <div key={k} className="thumb">
+              <img src={p} alt={`Foto ${k + 1}`} />
+              <button className="icon" aria-label="Foto entfernen" onClick={() => setItem(list, i, { photos: x.photos!.filter((_, m) => m !== k) })}>✕</button>
+              {k > 0 && <button className="icon left" aria-label="Als Hauptfoto" title="Als Hauptfoto" onClick={() => { const ph = [...x.photos!]; [ph[0], ph[k]] = [ph[k], ph[0]]; setItem(list, i, { photos: ph }); }}>★</button>}
+            </div>
+          ))}
         </div>
-      ))}
-      <button className="btn" onClick={() => set(list, [...r[list], { title: '', text: '' }])}>+ {label}</button>
-    </>
-  );
+      )}
+      <div className="row">
+        {list === 'findings' && <button className="btn small" onClick={() => addPhotos(i)}>📷 Foto</button>}
+        <button className="btn ghost small" onClick={() => setSnippetFor({ list, i })}>❝ Textbaustein</button>
+      </div>
+    </div>
+  ));
 
   return (
     <>
-      <PageHeader title={r.topic || 'Neuer Servicebericht'} actions={<>
+      <PageHeader title={r.customer || 'Servicebericht'} sub={[r.site, r.machineNumbers && `Masch.-Nr. ${r.machineNumbers}`, r.servicePeriod].filter(Boolean).join(' · ')} actions={<>
         <button className="btn ghost" onClick={() => navigate('berichte')}>← Übersicht</button>
-        <CopyButton text={text} label="FSM-Text kopieren" />
-        <button className="btn" onClick={openPdf}>Kunden-PDF</button>
-        <button className="btn" onClick={async () => downloadPptx(r, { companyName: s.companyName, logoDataUrl: await logoDataUrl(s.logoDataUrl) }).catch((e) => toast('Fehler: ' + e.message))}>PowerPoint</button>
+        <button className="btn mobile-only" onClick={() => setPreview(true)}>Vorschau</button>
+        <button className="btn primary" onClick={exportPdf}>PDF</button>
+        <button className="btn" onClick={exportPptx}>PowerPoint</button>
+        <CopyButton text={text} label="FSM-Text kopieren" className="btn" />
       </>} />
+      {busy && <p className="result warn">{busy}</p>}
 
       <div className="split">
         <div className="editor">
-          <section className="card">
-            <h2>1 · General information</h2>
-            <div className="form">
-              <Field label="Thema / Titel" wide><input value={r.topic} onChange={(e) => set('topic', e.target.value)} placeholder="e.g. Sealing problems on thermoforming machine" /></Field>
-              <Field label="Service period"><input value={r.servicePeriod} onChange={(e) => set('servicePeriod', e.target.value)} placeholder="24.11.2026 - 26.11.2026" /></Field>
-              <Field label="Type of assignment"><input list="assign" value={r.assignmentType} onChange={(e) => set('assignmentType', e.target.value)} />
-                <datalist id="assign">{['Repair', 'Preventive maintenance', 'Commissioning', 'Installation', 'Training', 'Format change', 'Retrofit', 'Remote support', 'Inspection'].map((x) => <option key={x} value={x} />)}</datalist></Field>
-              <Field label="Customer"><input value={r.customer} onChange={(e) => set('customer', e.target.value)} /></Field>
-              <Field label="Site"><input value={r.site} onChange={(e) => set('site', e.target.value)} /></Field>
-              <Field label="Equipment"><input value={r.equipment} onChange={(e) => set('equipment', e.target.value)} placeholder="e.g. Thermoforming packaging machine" /></Field>
-              <Field label="Machine number(s)"><input value={r.machineNumbers} onChange={(e) => set('machineNumbers', e.target.value)} /></Field>
-              <Field label="Service technician(s)" wide><input value={r.technicians} onChange={(e) => set('technicians', e.target.value)} /></Field>
+          <section className="card head-card">
+            <div className="head-mini" onClick={() => setHeaderOpen(true)} role="button" aria-label="Berichtskopf bearbeiten"><ReportPreview report={r} pages={1} maxWidth={150} /></div>
+            <div>
+              <h2>Berichtskopf</h2>
+              <dl className="rows">
+                <dt>Kunde</dt><dd>{r.customer || '—'}</dd>
+                <dt>Standort</dt><dd>{r.site || '—'}</dd>
+                <dt>Maschine</dt><dd>{r.machineNumbers || '—'}</dd>
+                <dt>Zeitraum</dt><dd>{r.servicePeriod || '—'}</dd>
+                <dt>Techniker</dt><dd>{r.technicians || '—'}</dd>
+              </dl>
+              <button className="btn small" style={{ marginTop: '.6rem' }} onClick={() => setHeaderOpen(true)}>✎ Kopf bearbeiten</button>
             </div>
           </section>
+
           <section className="card">
-            <h2>2 · Initial situation and objective</h2>
-            <textarea rows={4} value={r.initialSituation} onChange={(e) => set('initialSituation', e.target.value)} />
+            <h2>Initial situation and objective</h2>
+            <textarea rows={3} value={r.initialSituation} onChange={(e) => set('initialSituation', e.target.value)} placeholder="Was hat der Kunde gemeldet, was ist das Ziel des Einsatzes?" />
           </section>
-          <section className="card"><h2>3 · Findings and work carried out</h2>{items('findings', 'Finding')}</section>
-          <section className="card"><h2>4 · Recommendations</h2>{items('recommendations', 'Recommendation')}</section>
+
           <section className="card">
-            <h2>5 · Conclusion and open items</h2>
-            <textarea rows={3} value={r.conclusion} onChange={(e) => set('conclusion', e.target.value)} placeholder="Key statement" />
+            <h2>Findings and work carried out</h2>
+            {r.findings.length === 0 && <p className="muted">Noch keine Feststellungen. Füge Text oder Fotos hinzu.</p>}
+            {items('findings', 'Finding')}
+            <div className="row add-bar">
+              <button className="btn" onClick={() => add('findings')}>+ Text</button>
+              <button className="btn" onClick={() => addPhotos(null)}>📷 + Foto</button>
+            </div>
+          </section>
+
+          <section className="card">
+            <h2>Recommendations</h2>
+            {items('recommendations', 'Recommendation')}
+            <button className="btn" onClick={() => add('recommendations')}>+ Empfehlung</button>
+          </section>
+
+          <section className="card">
+            <h2>Conclusion and open items</h2>
+            <textarea rows={3} value={r.conclusion} onChange={(e) => set('conclusion', e.target.value)} placeholder="Kernaussage zum Abschluss" />
             <Field label="Offene Punkte (eine Zeile pro Punkt)" wide>
               <textarea rows={3} value={r.openItems.join('\n')} onChange={(e) => set('openItems', e.target.value.split('\n'))} /></Field>
           </section>
+
           <details className="card">
-            <summary><b>Zusammenfassung für Kunden-PDF (optional)</b></summary>
+            <summary><b>Zusammenfassung für die PDF (optional)</b></summary>
             <div className="form">
-              <Field label="Problem" wide><textarea rows={2} value={summary.problem} onChange={(e) => setSummary({ ...summary, problem: e.target.value })} /></Field>
-              <Field label="Cause" wide><textarea rows={2} value={summary.cause} onChange={(e) => setSummary({ ...summary, cause: e.target.value })} /></Field>
-              <Field label="Result" wide><textarea rows={2} value={summary.result} onChange={(e) => setSummary({ ...summary, result: e.target.value })} /></Field>
+              {(['problem', 'cause', 'result'] as const).map((k) => (
+                <Field key={k} label={{ problem: 'Problem', cause: 'Cause', result: 'Result' }[k]} wide>
+                  <textarea rows={2} value={r.summary?.[k] ?? ''} onChange={(e) => set('summary', { problem: '', cause: '', result: '', ...r.summary, [k]: e.target.value })} /></Field>
+              ))}
             </div>
           </details>
           <button className="btn danger" onClick={async () => { if (confirm('Bericht wirklich löschen?')) { await db.reports.delete(r.id); navigate('berichte'); } }}>Bericht löschen</button>
         </div>
 
-        <aside className="preview">
+        <aside className="preview desktop-only">
           <div className="card sticky">
-            <div className="card-head"><h2>FSM-Text (Vorschau)</h2><CopyButton text={text} /></div>
-            {missing.length > 0 && <p className="warn">Fehlt noch ([___]): {missing.join(', ')}</p>}
-            <pre className="fsm">{text}</pre>
+            <div className="tabs">
+              <button className={tab === 'doc' ? 'pill on' : 'pill'} onClick={() => setTab('doc')}>Dokument</button>
+              <button className={tab === 'fsm' ? 'pill on' : 'pill'} onClick={() => setTab('fsm')}>FSM-Text</button>
+            </div>
+            {tab === 'doc' ? <ReportPreview report={r} /> : <>
+              {missing.length > 0 && <p className="warn">Fehlt noch ([___]): {missing.join(', ')}</p>}
+              <pre className="fsm">{text}</pre>
+              <CopyButton text={text} />
+            </>}
           </div>
         </aside>
       </div>
 
+      {headerOpen && <HeaderDialog initial={r} onClose={() => setHeaderOpen(false)} onSave={(x) => { setR(x); setHeaderOpen(false); }} />}
+      {preview && (
+        <Modal title="Vorschau" onClose={() => setPreview(false)} footer={<><span className="spacer" /><button className="btn" onClick={exportPptx}>PowerPoint</button><button className="btn primary" onClick={exportPdf}>PDF</button></>}>
+          <ReportPreview report={r} />
+        </Modal>
+      )}
       {snippetFor && <SnippetPicker onClose={() => setSnippetFor(null)} onPick={(t) => {
         const cur = r[snippetFor.list][snippetFor.i];
         setItem(snippetFor.list, snippetFor.i, { text: cur.text ? cur.text + '\n' + t : t });
