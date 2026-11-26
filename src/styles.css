@@ -345,3 +345,5 @@ a.tag:hover { text-decoration: underline; }
 .sumtable.weeks th { text-align: left; font-size: .72rem; color: var(--muted); text-transform: uppercase; padding: .3rem 0; border-bottom: 1px solid var(--line); }
 .sumtable.weeks td { font-size: .9rem; }
 @media (max-width: 640px) { .hide-sm { display: none; } .tt td, .tt th { padding: .45rem .4rem; } }
+.sap-tag { font-size: .6rem; font-weight: 800; letter-spacing: .05em; background: var(--navy); color: #fff; border-radius: 4px; padding: 0 .3rem; margin-right: .35rem; vertical-align: 1px; }
+.result ul { margin: .3rem 0 .3rem 1.1rem; padding: 0; }

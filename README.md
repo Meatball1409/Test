@@ -10,7 +10,7 @@ Präsentationen, Reiseplanung und Zeiterfassung mit Überstundenberechnung. Funk
 |---|---|
 | **Heute** | Wochenstunden, Überstundenkonto, Stempeluhr (Start/Stopp), nächste Termine, Schnellzugriff |
 | **Kalender** | Monatsansicht mit KW, Feiertage nach Bundesland, Termin-Typen (Einsatz, Reise, Remote, Schulung, Bereitschaft, Urlaub …), Import/Export `.ics` (Outlook, Google, Apple), aus Einsatz direkt Bericht anlegen |
-| **Zeit** | Arbeit/Reise/Bereitschaft/Urlaub/Krank/Gleittag, Soll/Ist/Saldo pro Tag & Monat, Überstundenkonto, Resturlaub, automatische Mindestpause (§4 ArbZG), Warnungen bei > 10 h, Ruhezeit < 11 h, Sonn-/Feiertagsarbeit, CSV-Export für Excel |
+| **Zeit** | **SAP-Zeitnachweis importieren** (PDF aus Fiori, wird nur auf dem Gerät gelesen, mit Abgleich Tag für Tag),  Arbeit/Reise/Bereitschaft/Urlaub/Krank/Gleittag, Soll/Ist/Saldo pro Tag & Monat, Überstundenkonto, Resturlaub, automatische Mindestpause (§4 ArbZG), Warnungen bei > 10 h, Ruhezeit < 11 h, Sonn-/Feiertagsarbeit, CSV-Export für Excel |
 | **Berichte** | Feste Struktur (General information → Initial situation → Findings → Recommendations → Conclusion), Live-Vorschau des **FSM-Texts** (reiner Text, fehlende Angaben als `[___]`), **Kunden-PDF** (Drucken → Als PDF speichern), **PowerPoint**-Export, Textbausteine einfügen, Autospeichern |
 | **FSM-Texte** | Vorlagen mit Platzhaltern `{{Kunde}}` / `{{Menge\|1}}`, ausfüllen → kopieren → im FSM einfügen, Favoriten, Kategorien, **mit Kollegen teilen** (Export/Import) |
 | **Reisen** | Reisedaten, Hotel/Buchungen, Links (Route, Hotels, Restaurants, Tankstellen, Wetter, Reisehinweise), Packliste, Belege, **Verpflegungspauschalen** inkl. Kürzung für gestellte Mahlzeiten, km-Pauschale, Abrechnung kopieren, CSV, in Kalender eintragen |

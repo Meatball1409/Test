@@ -369,3 +369,70 @@ describe('Nachtstunden wie Überstunden (25 %)', () => {
     expect(d.diff / 60).toBe(1.25);
   });
 });
+
+import { parseSapStatement, sapNum, sapToEntries } from './sapImport';
+describe('SAP-Zeitnachweis importieren', () => {
+  const lines = [
+    'Zeitnachweis', 'vom 01.10.2026 bis 31.10.2026', '26.11.2026 Seite 3/3',
+    'Tag von bis Std. Sollz Saldo Summe UM TAZP',
+    '01 DO Urlaub 8,00 8,00 0,00 150,00 0,00 MES9',
+    '25 SO Kundenbesuch 06:00 12:00 15,25 0,00 0,00 153,00 0,00 FRKD',
+    'Kundenbesuch 12:45 22:00',
+    'Überstund.Sonnt. ZVB 15,25', 'Sonntag 50% ZVB 15,25',
+    'Wochensumme : 19.10.2026 - 25.10.2026 55,25 40,00 0,00 0,00',
+    '26 MO Reisezeit 07:30 08:00 7,50 8,00 0,50- 153,50 0,00 MES9',
+    'Kundenbesuch 08:00 12:00', 'Kundenbesuch 12:45 15:15', 'Kundenbesuch 15:15 15:45',
+    '27 DI Reisezeit 07:30 08:00 9,25 8,00 1,25 154,75 0,00 MES9',
+    'Kundenbesuch 08:00 12:00', 'Kundenbesuch 12:45 17:00', 'Reisezeit 17:00 17:30',
+    '28 MI Auslandsdienstreise a. RK 06:00 14:00 10,25 8,00 2,25 157,00 0,00 MES9',
+    'Reisezeit 07:30 09:00', 'Kundenbesuch 09:00 12:00', 'Kundenbesuch 12:45 17:00', 'Reisezeit 17:00 18:30',
+    '29 DO Auslandsdienstreise a. RK 06:00 14:00 7,25 8,00 0,75- 156,25 0,00 MES9',
+    'Reisezeit 09:00 12:00', 'Reisezeit 12:45 17:00',
+    '30 FR Auslandsdienstreise a. RK 06:00 14:00 9,75 8,00 1,75 158,00 0,00 MES9',
+    'Reisezeit 08:45 09:00', 'Kundenbesuch 09:00 12:00', 'Kundenbesuch 12:45 19:00', 'Reisezeit 19:00 19:15',
+    '31 SA Auslandsdienstreise a. RK 00:00 00:00 8,75 0,00 8,75 166,75 0,00 FRKD',
+    'Reisezeit 07:45 08:00', 'Kundenbesuch 08:00 12:00', 'Kundenbesuch 12:45 17:00', 'Reisezeit 17:00 17:15',
+    'Überstund. 25% ZVB 8,75', 'Gleitzeitstd. 125% ZVB 16,75', 'CO:geleist.Std. 208,00',
+    'Wochensumme : 26.10.2026 - 31.10.2026 52,75 40,00 12,75 0,00',
+    'Monats-Summe 208,00 176,00 150,00 0,00',
+    'Monatsübersicht zum Stichtag 31.10.2026',
+    'Zeitkonto Anzahl Zeitkonto Anzahl',
+    'GLZ-Saldo Vorperiode 150,00 Überstunden 0,00',
+    'GLZ-Saldo Gesamt 150,00 Überstunden 25% 8,75',
+    'Gleitzeitstunden 125% 16,75 0,50-Euro-Schicht 0,00',
+    'Abwesenheitsansprüche zum Stichtag 31.10.2026',
+    'Zeitkonto Abtragbar bis Anspruch Rest Verplant Verbrauch',
+    'Tarifurlaub 31.12.2026 30,00 8,00 8,00 22,00',
+  ];
+  const st = parseSapStatement(lines);
+  it('Kopf, Konten und Urlaub', () => {
+    expect(st.from).toBe('2026-10-01');
+    expect(st.to).toBe('2026-10-31');
+    expect(st.stichtag).toBe('2026-10-31');
+    expect(st.glzTotal).toBe(150 * 60);
+    expect(st.glzPrevious).toBe(150 * 60);
+    expect(st.overCapPaid! / 60).toBe(16.75);
+    expect(st.vacation).toEqual({ until: '2026-12-31', entitlement: 30, rest: 8, planned: 8, used: 22 });
+    expect(sapNum('0,50-')).toBe(-30);
+  });
+  it('Tage und Abschnitte; Tagesart „Auslandsdienstreise 06:00–14:00“ ist kein Abschnitt', () => {
+    const d28 = st.days.find((d) => d.date === '2026-10-28')!;
+    expect(d28.label).toBe('Auslandsdienstreise a. RK');
+    expect(d28.segments.map((x) => `${x.kind} ${x.start}-${x.end}`)).toEqual(['reise 07:30-09:00', 'kunde 09:00-12:00', 'kunde 12:45-17:00', 'reise 17:00-18:30']);
+    expect(d28.std! / 60).toBe(10.25);
+    const d26 = st.days.find((d) => d.date === '2026-10-26')!;
+    expect(d26.segments[0]).toMatchObject({ kind: 'reise', start: '07:30', end: '08:00' });
+    expect(d26.saldo).toBe(-30);
+    expect(st.days.find((d) => d.date === '2026-10-01')!.absence).toBe('urlaub');
+    expect(st.unknown).toEqual([]);
+  });
+  it('importierte Abschnitte ergeben dieselben Tagesstunden wie SAP', () => {
+    const Z: Settings = { ...DEFAULT_SETTINGS, travelFactor: 1, breakMode: 'firma' };
+    const entries = sapToEntries(st);
+    for (const d of st.days.filter((x) => x.segments.length)) {
+      const calc = summarizeDay(d.date, entries.filter((e) => e.date === d.date), Z).worked;
+      expect([d.date, calc / 60]).toEqual([d.date, d.std! / 60]);
+    }
+    expect(entries.find((e) => e.date === '2026-10-01')).toMatchObject({ kind: 'urlaub', id: 'sap-2026-10-01-a' });
+  });
+});

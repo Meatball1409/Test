@@ -6,6 +6,7 @@ import { db, saveSettings, useSettings } from '../db';
 import { addDays, endOfMonth, parseHours, formatDateDE, formatMinutes, MONTHS, startOfMonth, timeToMinutes, todayISO, uid, weekdayShort } from '../lib/dates';
 import { isDomestic } from '../lib/visa';
 import { printZeitnachweis } from './Zeitnachweis';
+import { SapImportDialog } from './SapImport';
 import { balanceDate, breakLabel, creditedMinutes, dayWork, effectiveBreak, fmtHours, glzAccount, overtimeBalance, setBalanceAt, summarizeRange, vacationSummary, weeklySums, withCalendarVacation } from '../lib/time';
 import { TIME_KINDS, type TimeEntry, type TimeKind } from '../lib/types';
 
@@ -20,6 +21,7 @@ export default function TimePage() {
   const [edit, setEdit] = useState<TimeEntry | null>(null);
   const [onlyFilled, setOnlyFilled] = useState(false);
   const [balanceOpen, setBalanceOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const loaded = useLiveQuery(() => db.times.toArray(), []);
   const vacEvents = useLiveQuery(() => db.events.where('type').equals('urlaub').toArray(), []) ?? [];
   const trips = useLiveQuery(() => db.trips.toArray(), []) ?? [];
@@ -92,6 +94,7 @@ export default function TimePage() {
   return (
     <>
       <PageHeader title="Zeiterfassung" actions={<>
+        <button className="btn" onClick={() => setImportOpen(true)}>SAP-Zeitnachweis importieren</button>
         <button className="btn" onClick={exportPdf}>Zeitnachweis (PDF)</button>
         <button className="btn" onClick={exportCsv}>CSV</button>
         <button className="btn primary" onClick={() => setEdit(newEntry(todayISO() >= month && todayISO() <= to ? todayISO() : month))}>+ Eintrag</button>
@@ -130,7 +133,7 @@ export default function TimePage() {
                   <td>
                     {es.map((e) => (
                       <button key={e.id} className={'entry k-' + e.kind} onClick={() => (e.id.startsWith('cal-') ? navigate('kalender', e.date) : setEdit(e))}>
-                        {TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.customer ? ` · ${e.customer}` : ''}
+                        {e.id.startsWith('sap-') && <span className="sap-tag">SAP</span>}{TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.customer ? ` · ${e.customer}` : ''}
                       </button>
                     ))}
                     <button className="entry add" onClick={() => setEdit(newEntry(d.date))} aria-label={`Abschnitt am ${formatDateDE(d.date)} hinzufügen`}>+</button>
@@ -184,6 +187,7 @@ export default function TimePage() {
       <p className="muted small">Berechnung wie im SAP-Zeitnachweis: Abschnitte (Reisezeit, Kundenbesuch, Arbeit) ergeben die Anwesenheit; Lücken dazwischen gelten als Pause{s.breakMode === 'firma' ? `, fehlt sie, werden ab ${s.companyBreakFromMin / 60} h automatisch ${s.companyBreakMin} min abgezogen` : ''}. Reisezeit {Math.round(s.travelFactor * 100)} %. {s.glzCapMin ? `Gleitzeitkonto ${H(s.glzFloorMin, true)} bis +${H(s.glzCapMin)} Std.; was am Monatsende darüber liegt, wird mit ${s.overPayPct} % Zuschlag ausgezahlt. ` : ''}{s.separateSunHoliday ? 'Sonn-/Feiertagsstunden zählen nicht zum Gleitzeitkonto, sondern separat. ' : ''}{s.nightSeparate ? `Nachtstunden (${s.nightStart}–${s.nightEnd}) wie Überstunden: Auszahlung mit ${s.nightPct} % Zuschlag. ` : ''}Anpassbar unter Einstellungen.</p>
 
       {edit && <EntryEditor entry={edit} onClose={() => setEdit(null)} />}
+      {importOpen && <SapImportDialog onClose={() => setImportOpen(false)} onImported={(m) => setMonth(m)} />}
       {balanceOpen && <BalanceEditor current={overtimeBalance(addDays(todayISO(), -1), all, s)} onClose={() => setBalanceOpen(false)} />}
     </>
   );
