@@ -33,6 +33,19 @@ class TechDeskDB extends Dexie {
 
 export const db = new TechDeskDB();
 
+/** Prüft beim Start, ob der Gerätespeicher funktioniert (Schreiben + Lesen) */
+export async function storageSelfTest(): Promise<string | null> {
+  try {
+    await db.open();
+    await db.meta.put({ key: '__selftest', value: Date.now() });
+    await db.meta.delete('__selftest');
+    return null;
+  } catch (e) {
+    const err = e as Error;
+    return `${err.name}: ${err.message}`;
+  }
+}
+
 export function useSettings(): Settings {
   const s = useLiveQuery(() => db.settings.get('main'), []);
   return { ...DEFAULT_SETTINGS, ...s };
