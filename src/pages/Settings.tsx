@@ -85,7 +85,7 @@ export default function SettingsPage() {
             <Field label="Nachtstunden bis"><input type="time" value={s.nightEnd} onChange={(e) => saveSettings({ nightEnd: e.target.value })} /></Field>
             <Field label="Nachtstunden wie Überstunden" hint="Nicht ins Gleitzeitkonto, Auszahlung mit Zuschlag"><input type="checkbox" checked={s.nightSeparate} onChange={(e) => saveSettings({ nightSeparate: e.target.checked })} /></Field>
             <Field label="Zuschlag Nacht (%)"><input type="number" min={0} max={200} step={5} value={s.nightPct} onChange={(e) => saveSettings({ nightPct: Number(e.target.value) })} /></Field>
-            <Field label="Hinweise Arbeitszeitgesetz" hint="> 10 h, Ruhezeit < 11 h, Sonn-/Feiertag"><input type="checkbox" checked={s.arbzgWarnings} onChange={(e) => saveSettings({ arbzgWarnings: e.target.checked })} /></Field>
+            <Field label="Hinweise Arbeitszeitgesetz" hint="Ruhezeit < 11 h, Sonn-/Feiertag"><input type="checkbox" checked={s.arbzgWarnings} onChange={(e) => saveSettings({ arbzgWarnings: e.target.checked })} /></Field>
             <Field label="Gleitzeitkonto" wide hint={`${fmtHours(s.overtimeStartBalance, s, true)} Std. zu Beginn vom ${formatDateDE(s.overtimeStartDate)} – ändern in der Zeiterfassung über „Gleitzeitkonto → anpassen“.`}>
               <a className="btn" href="#/zeit/stand">Stand anpassen</a></Field>
           </div>
