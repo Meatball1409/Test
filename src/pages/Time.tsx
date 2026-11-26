@@ -107,10 +107,13 @@ export default function TimePage() {
       <div className="kpis">
         <div className="kpi"><span>Ist Monat</span><b>{H(sum.worked)}</b><small>Soll {H(sum.target)}</small></div>
         <div className="kpi"><span>Saldo Monat</span><b className={monthDiff < 0 ? 'neg' : 'pos'}>{H(monthDiff, true)}</b><small>Ist − Soll bis heute</small></div>
-        <button className="kpi link" onClick={() => setBalanceOpen(true)}><span>Gleitzeitkonto</span><b className={glz.balance < 0 ? 'neg' : 'pos'}>{H(glz.balance, true)}</b><small>{s.glzCapMin ? `Obergrenze ${H(s.glzCapMin)} · ` : ''}anpassen ›</small></button>
-        {glz.overCap > 0 && <div className="kpi"><span>Über Obergrenze</span><b className="pos">{H(glz.overCap, true)}</b><small>separat (Gleitzeit 125 %)</small></div>}
+        <button className="kpi link" onClick={() => setBalanceOpen(true)}><span>Gleitzeitkonto</span><b className={glz.balance < 0 ? 'neg' : 'pos'}>{H(glz.balance, true)}</b><small>{s.glzCapMin ? `Rahmen ${H(s.glzFloorMin, true)} bis +${H(s.glzCapMin)} · ` : ''}anpassen ›</small></button>
+        {glz.overCap > 0 && <div className="kpi"><span>Auszahlung</span><b className="pos">{H(glz.overCap)}</b><small>über +{H(s.glzCapMin)} · mit {s.overPayPct} % = {H(Math.round(glz.overCap * (1 + s.overPayPct / 100)))}</small></div>}
         <a className="kpi link" href="#/kalender"><span>Urlaub {year}</span><b>{fmtDays(vac.rest)}</b><small>Rest · {fmtDays(vac.planned)} verplant ›</small></a>
       </div>
+
+      {s.glzFloorMin < 0 && glz.balance < s.glzFloorMin && <p className="result bad" role="alert">⚠ Gleitzeitkonto unter {H(s.glzFloorMin, true)} Std. – der erlaubte Rahmen ist unterschritten.</p>}
+      {s.glzFloorMin < 0 && glz.balance >= s.glzFloorMin && glz.balance < s.glzFloorMin + 10 * 60 && <p className="result warn">Gleitzeitkonto nahe der Untergrenze ({H(s.glzFloorMin, true)} Std.).</p>}
 
       <div className="card table-card">
         <table className="tt">
@@ -153,8 +156,9 @@ export default function TimePage() {
             <tr><td>GLZ-Saldo Vorperiode</td><td className="r">{H(glz.previous)}</td></tr>
             <tr><td>GLZ-Saldo akt. Periode</td><td className="r">{H(glz.periodSaldo - glz.overCap, true)}</td></tr>
             <tr className="sub"><td>GLZ-Saldo Gesamt</td><td className="r">{H(glz.balance)}</td></tr>
-            <tr><td>GLZ-Obergrenze</td><td className="r">{s.glzCapMin ? H(s.glzCapMin) : 'keine'}</td></tr>
-            <tr><td>Gleitzeitstunden 125 % (über Obergrenze)</td><td className="r">{H(glz.overCap)}</td></tr>
+            <tr><td>Rahmen Gleitzeitkonto</td><td className="r">{s.glzCapMin ? `${H(s.glzFloorMin, true)} bis +${H(s.glzCapMin)}` : 'ohne Grenze'}</td></tr>
+            <tr><td>Auszahlung über +{H(s.glzCapMin)} (Gleitzeitstunden {100 + s.overPayPct} %)</td><td className="r">{H(glz.overCap)}</td></tr>
+            {glz.overCap > 0 && <tr><td className="muted">= inkl. {s.overPayPct} % Zuschlag</td><td className="r muted">{H(Math.round(glz.overCap * (1 + s.overPayPct / 100)))}</td></tr>}
             <tr><td>Überstunden Samstag 25 %</td><td className="r">{H(counted.sat)}</td></tr>
             <tr><td>Sonntag 50 %{s.separateSunHoliday ? ' · Überstunden Sonntag' : ''}</td><td className="r">{H(counted.sun)}</td></tr>
             <tr><td>Feiertag 100 %{s.separateSunHoliday ? ' · Überstunden Feiertag' : ''}</td><td className="r">{H(counted.hol)}</td></tr>
@@ -175,7 +179,7 @@ export default function TimePage() {
           </tbody></table>
         </section>
       </div>
-      <p className="muted small">Berechnung wie im SAP-Zeitnachweis: Abschnitte (Reisezeit, Kundenbesuch, Arbeit) ergeben die Anwesenheit; Lücken dazwischen gelten als Pause{s.breakMode === 'firma' ? `, fehlt sie, werden ab ${s.companyBreakFromMin / 60} h automatisch ${s.companyBreakMin} min abgezogen` : ''}. Reisezeit {Math.round(s.travelFactor * 100)} %. {s.separateSunHoliday ? 'Sonn-/Feiertagsstunden zählen nicht zum Gleitzeitkonto, sondern separat. ' : ''}Anpassbar unter Einstellungen.</p>
+      <p className="muted small">Berechnung wie im SAP-Zeitnachweis: Abschnitte (Reisezeit, Kundenbesuch, Arbeit) ergeben die Anwesenheit; Lücken dazwischen gelten als Pause{s.breakMode === 'firma' ? `, fehlt sie, werden ab ${s.companyBreakFromMin / 60} h automatisch ${s.companyBreakMin} min abgezogen` : ''}. Reisezeit {Math.round(s.travelFactor * 100)} %. {s.glzCapMin ? `Gleitzeitkonto ${H(s.glzFloorMin, true)} bis +${H(s.glzCapMin)} Std.; was am Monatsende darüber liegt, wird mit ${s.overPayPct} % Zuschlag ausgezahlt. ` : ''}{s.separateSunHoliday ? 'Sonn-/Feiertagsstunden zählen nicht zum Gleitzeitkonto, sondern separat. ' : ''}Anpassbar unter Einstellungen.</p>
 
       {edit && <EntryEditor entry={edit} onClose={() => setEdit(null)} />}
       {balanceOpen && <BalanceEditor current={overtimeBalance(addDays(todayISO(), -1), all, s)} onClose={() => setBalanceOpen(false)} />}

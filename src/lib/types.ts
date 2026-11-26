@@ -64,7 +64,9 @@ export interface Settings {
   companyBreakStart: string; // nur zur Anzeige, z. B. 12:00
   arbzgWarnings: boolean;
   hourFormat: 'dezimal' | 'hm'; // 7,50 wie im SAP-Zeitnachweis oder 7:30
-  glzCapMin: number; // Obergrenze Gleitzeitkonto in Minuten (0 = keine); Überschuss wird separat ausgewiesen
+  glzCapMin: number; // Obergrenze Gleitzeitkonto in Minuten (0 = keine); darüber: Auszahlung mit Zuschlag
+  glzFloorMin: number; // Untergrenze (negativ, z. B. −150 Std.); darunter: Warnung
+  overPayPct: number; // Zuschlag auf Stunden über der Obergrenze (25 %)
   separateSunHoliday: boolean; // Sonn-/Feiertagsstunden nicht ins Gleitzeitkonto, sondern separat (Auszahlung)
   nightStart: string;
   nightEnd: string;
@@ -95,6 +97,8 @@ export const DEFAULT_SETTINGS: Settings = {
   arbzgWarnings: true,
   hourFormat: 'dezimal',
   glzCapMin: 150 * 60,
+  glzFloorMin: -150 * 60,
+  overPayPct: 25,
   separateSunHoliday: true,
   nightStart: '22:00',
   nightEnd: '06:00',

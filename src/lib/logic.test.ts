@@ -335,3 +335,17 @@ describe('Auswertung wie SAP-Zeitnachweis (Oktober 2026)', () => {
     expect(fmtHours(150 * 60, { hourFormat: 'hm' })).toBe('150:00');
   });
 });
+
+describe('Gleitzeitrahmen −150 bis +150', () => {
+  it('Überschuss wird ausgezahlt (+25 %), Konto bleibt bei 150; Minus bleibt erhalten', () => {
+    const G: Settings = { ...DEFAULT_SETTINGS, overtimeStartDate: '2026-11-02', overtimeStartBalance: 148 * 60 };
+    const e: TimeEntry[] = [{ id: 'a', date: '2026-11-02', kind: 'arbeit', start: '06:00', end: '19:45' }]; // 13:00 → +5:00
+    const g = glzAccount('2026-11-02', e, G);
+    expect(g.balance / 60).toBe(150);
+    expect(g.overCap / 60).toBe(3);
+    expect(DEFAULT_SETTINGS.glzFloorMin / 60).toBe(-150);
+    expect(DEFAULT_SETTINGS.overPayPct).toBe(25);
+    const neg = glzAccount('2026-11-02', [], { ...G, overtimeStartBalance: -149 * 60 });
+    expect(neg.balance / 60).toBe(-157); // Minus wird nicht gekappt (Warnung in der App)
+  });
+});

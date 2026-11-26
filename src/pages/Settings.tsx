@@ -77,7 +77,9 @@ export default function SettingsPage() {
             </>}
             <Field label="Stunden anzeigen"><select value={s.hourFormat} onChange={(e) => saveSettings({ hourFormat: e.target.value as typeof s.hourFormat })}>
               <option value="dezimal">Dezimal (7,50) wie SAP-Zeitnachweis</option><option value="hm">Std:Min (7:30)</option></select></Field>
-            <Field label="Obergrenze Gleitzeitkonto (Std.)" hint="Darüber wird separat ausgewiesen (Gleitzeitstunden 125 %). 0 = keine."><input type="number" min={0} step={1} value={s.glzCapMin / 60} onChange={(e) => saveSettings({ glzCapMin: Math.round(Number(e.target.value) * 60) })} /></Field>
+            <Field label="Gleitzeitkonto bis + (Std.)" hint="Darüber wird ausgezahlt. 0 = ohne Grenze."><input type="number" min={0} step={1} value={s.glzCapMin / 60} onChange={(e) => saveSettings({ glzCapMin: Math.round(Number(e.target.value) * 60) })} /></Field>
+            <Field label="Gleitzeitkonto bis − (Std.)" hint="Darunter warnt die App."><input type="number" max={0} step={1} value={s.glzFloorMin / 60} onChange={(e) => saveSettings({ glzFloorMin: Math.round(Number(e.target.value) * 60) })} /></Field>
+            <Field label="Zuschlag Auszahlung (%)" hint="Für Stunden über der Grenze"><input type="number" min={0} max={200} step={5} value={s.overPayPct} onChange={(e) => saveSettings({ overPayPct: Number(e.target.value) })} /></Field>
             <Field label="Sonn-/Feiertagsstunden separat" hint="Nicht ins Gleitzeitkonto, sondern als Überstunden Sonntag/Feiertag (wie im Zeitnachweis)"><input type="checkbox" checked={s.separateSunHoliday} onChange={(e) => saveSettings({ separateSunHoliday: e.target.checked })} /></Field>
             <Field label="Nachtstunden von"><input type="time" value={s.nightStart} onChange={(e) => saveSettings({ nightStart: e.target.value })} /></Field>
             <Field label="Nachtstunden bis"><input type="time" value={s.nightEnd} onChange={(e) => saveSettings({ nightEnd: e.target.value })} /></Field>

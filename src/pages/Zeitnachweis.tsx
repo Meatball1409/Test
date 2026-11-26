@@ -46,7 +46,7 @@ export function printZeitnachweis(p: {
   <div class="two">
     <section><h2>Monatsübersicht zum Stichtag</h2><table class="t">${ov([
       ['GLZ-Saldo Vorperiode', H(p.glz.previous)], ['GLZ-Saldo akt. Periode', H(p.glz.periodSaldo - p.glz.overCap, true)], ['GLZ-Saldo Gesamt', H(p.glz.balance)],
-      ['GLZ-Obergrenze', s.glzCapMin ? H(s.glzCapMin) : '–'], ['Gleitzeitstunden 125 %', H(p.glz.overCap)], ['Überstunden 25 % (Samstag)', H(p.counted.sat)],
+      ['Rahmen Gleitzeitkonto', s.glzCapMin ? `${H(s.glzFloorMin, true)} bis +${H(s.glzCapMin)}` : '–'], [`Gleitzeitstunden ${100 + s.overPayPct} % (Auszahlung)`, H(p.glz.overCap)], ['Überstunden 25 % (Samstag)', H(p.counted.sat)],
       ['Sonntag 50 %', H(p.counted.sun)], ['Feiertag 100 %', H(p.counted.hol)], [`Nachtstunden ${s.nightStart}–${s.nightEnd}`, H(p.counted.night)],
     ])}</table></section>
     <section><h2>Wochensummen</h2><table class="t"><thead><tr><th>KW</th><th>Beginn</th><th>Ende</th><th class="r">Ist</th><th class="r">Soll</th><th class="r">Saldo</th></tr></thead><tbody>${p.weeks.map((w) => `<tr><td>${w.kw}</td><td>${formatDateDE(w.from)}</td><td>${formatDateDE(w.to)}</td><td class="r">${H(w.worked)}</td><td class="r">${H(w.target)}</td><td class="r">${H(w.diff, true)}</td></tr>`).join('')}</tbody></table>
