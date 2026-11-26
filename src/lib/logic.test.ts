@@ -349,3 +349,23 @@ describe('Gleitzeitrahmen −150 bis +150', () => {
     expect(neg.balance / 60).toBe(-157); // Minus wird nicht gekappt (Warnung in der App)
   });
 });
+
+describe('Nachtstunden wie Überstunden (25 %)', () => {
+  const N: Settings = { ...DEFAULT_SETTINGS, overtimeStartDate: '2026-11-02', overtimeStartBalance: 0 };
+  it('Nachtanteil geht nicht ins Gleitzeitkonto, wird separat ausgewiesen', () => {
+    // Mo 14:00–24:00 = 10 h, 45 min Pause → 9,25 h; davon 2 h Nacht (22–24)
+    const d = summarizeDay('2026-11-02', [{ id: 'n', date: '2026-11-02', kind: 'arbeit', start: '14:00', end: '00:00' }], N);
+    expect(d.worked / 60).toBe(9.25);
+    expect(d.nightPaid / 60).toBe(2);
+    expect(d.diff / 60).toBe(9.25 - 2 - 8);
+  });
+  it('Schicht über Mitternacht 20:00–04:00', () => {
+    const d = summarizeDay('2026-11-03', [{ id: 'm', date: '2026-11-03', kind: 'arbeit', start: '20:00', end: '04:00' }], N);
+    expect(d.nightPaid / 60).toBe(6);
+  });
+  it('abschaltbar', () => {
+    const d = summarizeDay('2026-11-02', [{ id: 'n', date: '2026-11-02', kind: 'arbeit', start: '14:00', end: '00:00' }], { ...N, nightSeparate: false });
+    expect(d.nightPaid).toBe(0);
+    expect(d.diff / 60).toBe(1.25);
+  });
+});

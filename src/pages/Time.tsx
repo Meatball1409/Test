@@ -58,7 +58,7 @@ export default function TimePage() {
       rows.push([formatDateDE(d.date), weekdayShort(d.date), d.holiday ?? d.half ?? '', d.first !== undefined ? hm(d.first) : '', d.last !== undefined ? hm(d.last) : '', dec(d.worked), dec(d.target), counts(d.date) ? dec(d.diff) : '', '', '']);
       for (const e of es) rows.push(['', '', TIME_KINDS[e.kind], e.start ?? '', e.end ?? '', '', '', '', e.customer ?? '', e.note ?? '']);
     }
-    rows.push([], ['Monatssumme', '', '', '', '', dec(sum.worked), dec(sum.target), dec(monthDiff)], ['GLZ-Saldo Gesamt', dec(glz.balance)], ['Über Obergrenze', dec(glz.overCap)], ['Samstag (25 %)', dec(counted.sat)], ['Sonntag (50 %)', dec(counted.sun)], ['Feiertag (100 %)', dec(counted.hol)], ['Nachtstunden', dec(counted.night)]);
+    rows.push([], ['Monatssumme', '', '', '', '', dec(sum.worked), dec(sum.target), dec(monthDiff)], ['GLZ-Saldo Gesamt', dec(glz.balance)], ['Über Obergrenze', dec(glz.overCap)], ['Samstag (25 %)', dec(counted.sat)], ['Sonntag (50 %)', dec(counted.sun)], ['Feiertag (100 %)', dec(counted.hol)], ['Nachtstunden (Auszahlung)', dec(counted.nightPaid)]);
     const csv = '﻿' + rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
     download(`Zeitnachweis_${month.slice(0, 7)}.csv`, csv, 'text/csv;charset=utf-8');
   }
@@ -135,6 +135,7 @@ export default function TimePage() {
                     ))}
                     <button className="entry add" onClick={() => setEdit(newEntry(d.date))} aria-label={`Abschnitt am ${formatDateDE(d.date)} hinzufügen`}>+</button>
                     {d.breakDeducted > 0 && <div className="note">Pause {s.breakMode === 'firma' ? `${s.companyBreakStart}–${hm(timeToMinutes(s.companyBreakStart) + d.breakDeducted)}` : `${d.breakDeducted} min`} abgezogen</div>}
+                    {d.nightPaid > 0 && <div className="note">Nacht {H(d.nightPaid)} Std. · Auszahlung mit {s.nightPct} %, nicht im Gleitzeitkonto</div>}
                     {(d.sat > 0 || d.sun > 0 || d.hol > 0) && <div className="note">{d.sat ? 'Samstag 25 %' : d.sun ? 'Sonntag 50 % · nicht im Gleitzeitkonto' : 'Feiertag 100 % · nicht im Gleitzeitkonto'}</div>}
                     {d.warnings.map((w) => <div key={w} className="warn">⚠ {w}</div>)}
                   </td>
@@ -162,7 +163,8 @@ export default function TimePage() {
             <tr><td>Überstunden Samstag 25 %</td><td className="r">{H(counted.sat)}</td></tr>
             <tr><td>Sonntag 50 %{s.separateSunHoliday ? ' · Überstunden Sonntag' : ''}</td><td className="r">{H(counted.sun)}</td></tr>
             <tr><td>Feiertag 100 %{s.separateSunHoliday ? ' · Überstunden Feiertag' : ''}</td><td className="r">{H(counted.hol)}</td></tr>
-            <tr><td>Nachtstunden ({s.nightStart}–{s.nightEnd})</td><td className="r">{H(counted.night)}</td></tr>
+            <tr><td>Nachtstunden {s.nightStart}–{s.nightEnd}{s.nightSeparate ? ` · Auszahlung mit ${s.nightPct} %` : ''}</td><td className="r">{H(s.nightSeparate ? counted.nightPaid : counted.night)}</td></tr>
+            {s.nightSeparate && counted.nightPaid > 0 && <tr><td className="muted">= inkl. {s.nightPct} % Zuschlag</td><td className="r muted">{H(Math.round(counted.nightPaid * (1 + s.nightPct / 100)))}</td></tr>}
           </tbody></table>
         </section>
         <section className="card">
@@ -179,7 +181,7 @@ export default function TimePage() {
           </tbody></table>
         </section>
       </div>
-      <p className="muted small">Berechnung wie im SAP-Zeitnachweis: Abschnitte (Reisezeit, Kundenbesuch, Arbeit) ergeben die Anwesenheit; Lücken dazwischen gelten als Pause{s.breakMode === 'firma' ? `, fehlt sie, werden ab ${s.companyBreakFromMin / 60} h automatisch ${s.companyBreakMin} min abgezogen` : ''}. Reisezeit {Math.round(s.travelFactor * 100)} %. {s.glzCapMin ? `Gleitzeitkonto ${H(s.glzFloorMin, true)} bis +${H(s.glzCapMin)} Std.; was am Monatsende darüber liegt, wird mit ${s.overPayPct} % Zuschlag ausgezahlt. ` : ''}{s.separateSunHoliday ? 'Sonn-/Feiertagsstunden zählen nicht zum Gleitzeitkonto, sondern separat. ' : ''}Anpassbar unter Einstellungen.</p>
+      <p className="muted small">Berechnung wie im SAP-Zeitnachweis: Abschnitte (Reisezeit, Kundenbesuch, Arbeit) ergeben die Anwesenheit; Lücken dazwischen gelten als Pause{s.breakMode === 'firma' ? `, fehlt sie, werden ab ${s.companyBreakFromMin / 60} h automatisch ${s.companyBreakMin} min abgezogen` : ''}. Reisezeit {Math.round(s.travelFactor * 100)} %. {s.glzCapMin ? `Gleitzeitkonto ${H(s.glzFloorMin, true)} bis +${H(s.glzCapMin)} Std.; was am Monatsende darüber liegt, wird mit ${s.overPayPct} % Zuschlag ausgezahlt. ` : ''}{s.separateSunHoliday ? 'Sonn-/Feiertagsstunden zählen nicht zum Gleitzeitkonto, sondern separat. ' : ''}{s.nightSeparate ? `Nachtstunden (${s.nightStart}–${s.nightEnd}) wie Überstunden: Auszahlung mit ${s.nightPct} % Zuschlag. ` : ''}Anpassbar unter Einstellungen.</p>
 
       {edit && <EntryEditor entry={edit} onClose={() => setEdit(null)} />}
       {balanceOpen && <BalanceEditor current={overtimeBalance(addDays(todayISO(), -1), all, s)} onClose={() => setBalanceOpen(false)} />}
