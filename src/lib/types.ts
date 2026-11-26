@@ -65,6 +65,7 @@ export interface Settings {
   overtimeStartBalance: number; // Minuten Übertrag
   overtimeStartDate: string;
   vacationDaysPerYear: number;
+  vacationCarryOver: Record<string, number>; // Jahr → übertragene Resttage aus dem Vorjahr
   kmRate: number;
   mealFull: number;
   mealPartial: number;
@@ -89,6 +90,7 @@ export const DEFAULT_SETTINGS: Settings = {
   overtimeStartBalance: 0,
   overtimeStartDate: `${new Date().getFullYear()}-01-01`,
   vacationDaysPerYear: 30,
+  vacationCarryOver: {},
   kmRate: 0.3,
   mealFull: 28,
   mealPartial: 14,

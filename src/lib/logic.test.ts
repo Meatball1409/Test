@@ -274,3 +274,14 @@ describe('Bayern: Feiertage und Urlaub', () => {
     expect(summarizeDay('2026-12-22', t, BY).diff).toBe(0);
   });
 });
+
+describe('Resturlaub aus dem Vorjahr', () => {
+  it('Übertrag erhöht den Anspruch nur im eingetragenen Jahr', () => {
+    const S2: Settings = { ...DEFAULT_SETTINGS, vacationCarryOver: { '2026': 4.5 } };
+    const v = vacationSummary(2026, [], [], S2, '2026-11-26');
+    expect(v.carryOver).toBe(4.5);
+    expect(v.entitlement).toBe(34.5);
+    expect(v.remaining).toBe(33.5);
+    expect(vacationSummary(2027, [], [], S2, '2026-11-26').carryOver).toBe(0);
+  });
+});

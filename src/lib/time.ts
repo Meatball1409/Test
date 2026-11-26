@@ -161,7 +161,9 @@ export function withCalendarVacation(times: TimeEntry[], events: CalendarEvent[]
 }
 
 export interface VacationSummary {
-  entitlement: number;
+  entitlement: number; // Jahresanspruch + Übertrag
+  annual: number;
+  carryOver: number;
   halfDays: { date: string; name: string }[];
   halfTotal: number;
   taken: number;
@@ -182,7 +184,9 @@ export function vacationSummary(year: number, times: TimeEntry[], events: Calend
   const taken = days.filter((d) => d.date <= today).reduce((a, d) => a + d.value, 0);
   const planned = days.filter((d) => d.date > today).reduce((a, d) => a + d.value, 0);
   const halfTotal = halfDays.length * 0.5;
-  return { entitlement: s.vacationDaysPerYear, halfDays, halfTotal, taken, planned, days, remaining: s.vacationDaysPerYear - halfTotal - taken - planned };
+  const carryOver = s.vacationCarryOver?.[y] ?? 0;
+  const entitlement = s.vacationDaysPerYear + carryOver;
+  return { entitlement, annual: s.vacationDaysPerYear, carryOver, halfDays, halfTotal, taken, planned, days, remaining: entitlement - halfTotal - taken - planned };
 }
 
 export function vacationUsed(year: number, all: TimeEntry[], s: Settings): number {

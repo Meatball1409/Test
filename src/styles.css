@@ -316,3 +316,5 @@ a.tag:hover { text-decoration: underline; }
   .cal-day.holiday .num { color: var(--neg); }
   .cal-day.holiday::after { content: ''; width: 18px; height: 3px; border-radius: 2px; background: var(--neg); margin-top: auto; }
 }
+.icon.edit { min-width: 26px; min-height: 26px; padding: 0 .3rem; font-size: .9rem; color: var(--accent); }
+.vac-rows dd { display: flex; align-items: center; gap: .1rem; }
