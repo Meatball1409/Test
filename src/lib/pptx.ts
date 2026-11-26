@@ -4,7 +4,7 @@ import type { NumberedItem, ServiceReport } from './types';
 type Slide = ReturnType<InstanceType<typeof import('pptxgenjs').default>['addSlide']>;
 const NAVY = '1E2B50', ACCENT = '3B82C4', BG = 'F5F6F9', CARD = 'FFFFFF', TEXT = '4A5064', MUTED = '5F6370', LINE = 'E1E4EC';
 const val = (s?: string) => (s && s.trim() ? s.trim() : '[___]');
-const filled = (a: NumberedItem[]) => a.filter((i) => i.title.trim() || i.text.trim());
+const filled = (a: NumberedItem[]) => a.filter((i) => i.title.trim() || i.text.trim() || (i.photos?.length ?? 0) > 0);
 
 /** Erstellt eine Präsentation (16:9) aus einem Servicebericht und lädt sie herunter. */
 export async function downloadPptx(r: ServiceReport, b: Branding) {
@@ -28,7 +28,7 @@ export async function downloadPptx(r: ServiceReport, b: Branding) {
     s.addText(`${val(r.customer)} · ${++slideNo}`, { x: W - 4.6, y: 6.98, w: 4, h: 0.25, fontFace: 'Arial', fontSize: 10, color: MUTED, align: 'right', margin: 0 });
     return s;
   };
-  const cards = (s: Slide, items: { n?: string; title: string; text: string }[]) => {
+  const cards = (s: Slide, items: { n?: string; title: string; text: string; photo?: string }[]) => {
     const gap = 0.3, w = (W - 1.2 - gap * 2) / 3;
     items.forEach((it, i) => {
       const x = 0.6 + i * (w + gap), y = 1.65;
@@ -37,7 +37,9 @@ export async function downloadPptx(r: ServiceReport, b: Branding) {
       let ty = y + 0.3;
       if (it.n) { s.addText(it.n, { x: x + 0.3, y: ty, w: 1.2, h: 0.6, fontFace: 'Arial', fontSize: 30, bold: true, color: ACCENT, margin: 0 }); ty += 0.75; }
       s.addText(it.title, { x: x + 0.3, y: ty, w: w - 0.6, h: 0.7, fontFace: 'Arial', fontSize: 17, bold: true, color: NAVY, valign: 'top', margin: 0, fit: 'shrink' });
-      s.addText(it.text, { x: x + 0.3, y: ty + 0.8, w: w - 0.6, h: 4.9 - (ty - y) - 1.05, fontFace: 'Arial', fontSize: 14, color: TEXT, valign: 'top', margin: 0, fit: 'shrink' });
+      const photoH = it.photo ? 2.0 : 0;
+      s.addText(it.text, { x: x + 0.3, y: ty + 0.8, w: w - 0.6, h: 4.9 - (ty - y) - 1.05 - (photoH ? photoH + 0.15 : 0), fontFace: 'Arial', fontSize: 14, color: TEXT, valign: 'top', margin: 0, fit: 'shrink' });
+      if (it.photo) s.addImage({ data: it.photo, x: x + 0.3, y: y + 4.9 - 0.25 - photoH, w: w - 0.6, h: photoH, sizing: { type: 'cover', w: w - 0.6, h: photoH } });
     });
   };
 
@@ -79,7 +81,7 @@ export async function downloadPptx(r: ServiceReport, b: Branding) {
 
   // 4 Findings
   for (let i = 0; i < f.length; i += 3)
-    cards(content('Findings', 'Findings and work carried out'), f.slice(i, i + 3).map((x, j) => ({ n: String(i + j + 1).padStart(2, '0'), title: val(x.title), text: val(x.text) })));
+    cards(content('Findings', 'Findings and work carried out'), f.slice(i, i + 3).map((x, j) => ({ n: String(i + j + 1).padStart(2, '0'), title: val(x.title), text: x.text.trim() ? x.text.trim() : '', photo: x.photos?.[0] })));
 
   // 5 Recommendations + Conclusion
   const recCards = rec.map((x, j) => ({ n: String(f.length + j + 1).padStart(2, '0'), title: val(x.title), text: val(x.text) }));
@@ -89,5 +91,5 @@ export async function downloadPptx(r: ServiceReport, b: Branding) {
     cards(content(i + 3 >= recCards.length ? 'Recommendations & conclusion' : 'Recommendations', 'Recommendations'), recCards.slice(i, i + 3).map((x) => ({ ...x, n: x.n || undefined })));
 
   const dt = new Date().toLocaleDateString('de-DE').replace(/\//g, '.');
-  await p.writeFile({ fileName: `Service_Visit_${(r.customer || 'Customer').replace(/\W+/g, '_')}_${dt}.pptx` });
+  await p.writeFile({ fileName: `Service_Visit_${(r.customer || 'Customer').replace(/[^\p{L}\p{N}]+/gu, '_')}_${dt}.pptx` });
 }

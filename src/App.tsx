@@ -28,9 +28,11 @@ export const navigate = (id: RouteId, sub = '') => { location.hash = `#/${id}${s
 export const routeParam = () => location.hash.replace('#/', '').split('/')[1] ?? '';
 
 export default function App() {
-  const [route, setRoute] = useState<RouteId>(current);
+  // Ganzen Hash merken: auch ein Wechsel innerhalb eines Bereichs (z. B. #/berichte → #/berichte/neu) muss neu darstellen
+  const [hash, setHash] = useState(location.hash);
+  const route = current();
   useEffect(() => {
-    const h = () => { setRoute(current()); window.scrollTo(0, 0); };
+    const h = () => { setHash(location.hash); window.scrollTo(0, 0); };
     window.addEventListener('hashchange', h);
     return () => window.removeEventListener('hashchange', h);
   }, []);
@@ -79,7 +81,7 @@ export default function App() {
             <div style={{ marginTop: '.5rem' }}><button className="btn small" onClick={() => location.reload()}>App neu laden</button></div>
           </div>
         ))}
-        <R.C key={location.hash} />
+        <R.C key={hash} />
       </main>
     </div>
   );

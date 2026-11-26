@@ -107,7 +107,8 @@ export interface Snippet {
   favorite?: boolean;
 }
 
-export interface NumberedItem { title: string; text: string }
+export interface NumberedItem { title: string; text: string; photos?: string[] }
+export interface ReportSummary { problem: string; cause: string; result: string }
 
 export interface ServiceReport {
   id: string;
@@ -126,6 +127,9 @@ export interface ServiceReport {
   recommendations: NumberedItem[];
   conclusion: string;
   openItems: string[];
+  arrival?: string; // ISO-Datum Anreise
+  departure?: string; // ISO-Datum Abreise
+  summary?: ReportSummary;
 }
 
 export interface Expense { id: string; date: string; category: string; amount: number; note?: string }
