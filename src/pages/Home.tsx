@@ -2,9 +2,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { navigate } from '../App';
 import { Icon } from '../icons';
 import { db, useSettings } from '../db';
-import { addDays, formatDateDE, formatMinutes, isoWeek, todayISO, weekday, weekdayShort } from '../lib/dates';
+import { addDays, formatDateDE, isoWeek, todayISO, weekday, weekdayShort } from '../lib/dates';
 import { holidayName } from '../lib/holidays';
-import { balanceDate, overtimeBalance, summarizeRange, withCalendarVacation } from '../lib/time';
+import { balanceDate, fmtHours, overtimeBalance, summarizeRange, withCalendarVacation } from '../lib/time';
 import { EVENT_TYPES, TIME_KINDS } from '../lib/types';
 
 const greeting = () => { const h = new Date().getHours(); return h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend'; };
@@ -42,9 +42,9 @@ export default function Home() {
       </section>
 
       <div className="kpis">
-        <div className="kpi"><span className="kpi-ico"><Icon name="clock" /></span><span>Diese Woche</span><b>{formatMinutes(week.actual)}</b>
-          <div className="bar"><i style={{ width: `${Math.min(100, week.target ? (week.actual / week.target) * 100 : 0)}%` }} /></div><small>von {formatMinutes(week.target)} Soll</small></div>
-        <button className="kpi link" onClick={() => navigate('zeit', 'stand')}><span className="kpi-ico"><Icon name="trend" /></span><span>Überstunden</span><b className={balance < 0 ? 'neg' : 'pos'}>{formatMinutes(balance, true)}</b><small>Kontostand · antippen zum Anpassen</small></button>
+        <div className="kpi"><span className="kpi-ico"><Icon name="clock" /></span><span>Diese Woche</span><b>{fmtHours(week.worked, s)}</b>
+          <div className="bar"><i style={{ width: `${Math.min(100, week.target ? (week.worked / week.target) * 100 : 0)}%` }} /></div><small>von {fmtHours(week.target, s)} Soll</small></div>
+        <button className="kpi link" onClick={() => navigate('zeit', 'stand')}><span className="kpi-ico"><Icon name="trend" /></span><span>Gleitzeitkonto</span><b className={balance < 0 ? 'neg' : 'pos'}>{fmtHours(balance, s, true)}</b><small>Stand · antippen zum Anpassen</small></button>
         <div className="kpi"><span className="kpi-ico"><Icon name="calendar" /></span><span>Termine</span><b>{events.length}</b><small>in den nächsten 14 Tagen</small></div>
         <div className="kpi"><span className="kpi-ico"><Icon name="plane" /></span><span>Reisen</span><b>{trips.length}</b><small>anstehend</small></div>
       </div>

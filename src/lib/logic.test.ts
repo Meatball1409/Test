@@ -8,7 +8,7 @@ import { emptyReport, fsmText, missingFields } from './report';
 import { fromIcs, toIcs } from './ics';
 import { DEFAULT_SETTINGS, type Settings, type TimeEntry, type Trip } from './types';
 
-const S: Settings = { ...DEFAULT_SETTINGS, state: 'BW', overtimeStartDate: '2026-11-02', breakMode: 'gesetzlich' };
+const S: Settings = { ...DEFAULT_SETTINGS, state: 'BW', overtimeStartDate: '2026-11-02', breakMode: 'gesetzlich', glzCapMin: 0 };
 const F: Settings = { ...S, breakMode: 'firma' };
 const work = (date: string, start: string, end: string, breakMin = 0, kind: TimeEntry['kind'] = 'arbeit'): TimeEntry =>
   ({ id: date + start, date, start, end, breakMin, kind });
@@ -235,7 +235,7 @@ describe('Ende-zu-Ende-Verschlüsselung', () => {
 });
 
 import { halfDayName, holidays } from './holidays';
-import { vacationSummary, withCalendarVacation } from './time';
+import { fmtHours, glzAccount, vacationSummary, withCalendarVacation } from './time';
 describe('Bayern: Feiertage und Urlaub', () => {
   const BY: Settings = { ...DEFAULT_SETTINGS, breakMode: 'firma', overtimeStartDate: '2026-01-01' };
   it('Standard-Bundesland ist Bayern, 30 Urlaubstage', () => {
@@ -258,15 +258,16 @@ describe('Bayern: Feiertage und Urlaub', () => {
     const v = vacationSummary(2026, times, events, BY, '2026-11-26');
     expect(v.halfTotal).toBe(1);
     expect(v.taken).toBe(11);
-    expect(v.planned).toBe(0);
+    expect(v.planned).toBe(1); // 24./31.12. liegen noch in der Zukunft
+    expect(v.rest).toBe(19);
     expect(v.remaining).toBe(18);
   });
   it('Urlaub über Weihnachten: 24./31.12. kosten nur die zweite Hälfte, Feiertage nichts', () => {
     const events = [{ id: 'w', title: 'Weihnachten', type: 'urlaub' as const, startDate: '2026-12-21', endDate: '2027-01-06' }];
     const v = vacationSummary(2026, [], events, BY, '2026-11-26');
-    // 21.–23.12. (3) + 24.12. (½) + 28.–30.12. (3) + 31.12. (½) = 7; 25./26.12. Feiertage
-    expect(v.planned).toBe(7);
-    expect(v.remaining).toBe(30 - 1 - 7);
+    // 21.–23.12. (3) + 24.12. (½+½) + 28.–30.12. (3) + 31.12. (½+½) = 8 inkl. der automatischen halben Tage; 25./26.12. Feiertage
+    expect(v.planned).toBe(8);
+    expect(v.remaining).toBe(30 - 8);
   });
   it('Zeiterfassung: 24.12. halbes Soll erfüllt, Kalender-Urlaub erfüllt Soll', () => {
     expect(summarizeDay('2026-12-24', [], BY).diff).toBe(-240);
@@ -282,6 +283,69 @@ describe('Resturlaub aus dem Vorjahr', () => {
     expect(v.carryOver).toBe(4.5);
     expect(v.entitlement).toBe(34.5);
     expect(v.remaining).toBe(33.5);
+    expect(v.rest).toBe(34.5);
     expect(vacationSummary(2027, [], [], S2, '2026-11-26').carryOver).toBe(0);
+  });
+});
+
+describe('Auswertung wie SAP-Zeitnachweis (Oktober 2026)', () => {
+  const Z: Settings = { ...DEFAULT_SETTINGS, state: 'BY', breakMode: 'firma', travelFactor: 1, glzCapMin: 150 * 60, separateSunHoliday: true, overtimeStartDate: '2026-10-26', overtimeStartBalance: 150 * 60 };
+  const seg = (date: string, kind: TimeEntry['kind'], start: string, end: string): TimeEntry => ({ id: date + start + kind, date, kind, start, end });
+  // KW 44 laut Zeitnachweis
+  const week: TimeEntry[] = [
+    seg('2026-10-26', 'reise', '07:30', '08:00'), seg('2026-10-26', 'kunde', '08:00', '12:00'), seg('2026-10-26', 'kunde', '12:45', '15:15'), seg('2026-10-26', 'kunde', '15:15', '15:45'),
+    seg('2026-10-27', 'reise', '07:30', '08:00'), seg('2026-10-27', 'kunde', '08:00', '12:00'), seg('2026-10-27', 'kunde', '12:45', '17:00'), seg('2026-10-27', 'reise', '17:00', '17:30'),
+    seg('2026-10-28', 'reise', '07:30', '09:00'), seg('2026-10-28', 'kunde', '09:00', '12:00'), seg('2026-10-28', 'kunde', '12:45', '17:00'), seg('2026-10-28', 'reise', '17:00', '18:30'),
+    seg('2026-10-29', 'reise', '09:00', '12:00'), seg('2026-10-29', 'reise', '12:45', '17:00'),
+    seg('2026-10-30', 'reise', '08:45', '09:00'), seg('2026-10-30', 'kunde', '09:00', '12:00'), seg('2026-10-30', 'kunde', '12:45', '19:00'), seg('2026-10-30', 'reise', '19:00', '19:15'),
+    seg('2026-10-31', 'reise', '07:45', '08:00'), seg('2026-10-31', 'kunde', '08:00', '12:00'), seg('2026-10-31', 'kunde', '12:45', '17:00'), seg('2026-10-31', 'reise', '17:00', '17:15'),
+  ];
+  it('Tagesstunden je Tag (Lücke 12:00–12:45 = Pause, kein zweiter Abzug)', () => {
+    const r = summarizeRange('2026-10-26', '2026-10-31', week, Z);
+    expect(r.days.map((d) => d.worked / 60)).toEqual([7.5, 9.25, 10.25, 7.25, 9.75, 8.75]);
+    expect(r.days.map((d) => d.diff / 60)).toEqual([-0.5, 1.25, 2.25, -0.75, 1.75, 8.75]);
+  });
+  it('Wochensumme 52,75 / Soll 40 / Saldo 12,75, Samstag 8,75 als 25 %-Stunden', () => {
+    const r = summarizeRange('2026-10-26', '2026-10-31', week, Z);
+    expect(r.worked / 60).toBe(52.75);
+    expect(r.target / 60).toBe(40);
+    expect(r.diff / 60).toBe(12.75);
+    expect(r.sat / 60).toBe(8.75);
+  });
+  it('Sonntag zählt nicht zum Saldo, sondern separat', () => {
+    const d = summarizeDay('2026-10-25', [seg('2026-10-25', 'kunde', '06:00', '22:00')], Z);
+    expect(d.worked / 60).toBe(15.25);
+    expect(d.diff).toBe(0);
+    expect(d.sun / 60).toBe(15.25);
+    expect(d.paidSeparately / 60).toBe(15.25);
+  });
+  it('Gleitzeitkonto: Obergrenze 150, Überschuss separat', () => {
+    const g = glzAccount('2026-10-31', week, Z);
+    expect(g.previous / 60).toBe(150);
+    expect(g.periodSaldo / 60).toBe(12.75);
+    expect(g.balance / 60).toBe(150);
+    expect(g.overCap / 60).toBe(12.75);
+  });
+  it('einfache Eingabe 7–18 Uhr ohne Lücke: 45 min Abzug', () => {
+    expect(summarizeDay('2026-11-02', [seg('2026-11-02', 'arbeit', '07:00', '18:00')], Z).worked).toBe(615);
+  });
+  it('Dezimal-Anzeige', () => {
+    expect(fmtHours(570, Z)).toBe('9,50');
+    expect(fmtHours(-45, Z, true)).toBe('−0,75');
+    expect(fmtHours(150 * 60, { hourFormat: 'hm' })).toBe('150:00');
+  });
+});
+
+describe('Gleitzeitrahmen −150 bis +150', () => {
+  it('Überschuss wird ausgezahlt (+25 %), Konto bleibt bei 150; Minus bleibt erhalten', () => {
+    const G: Settings = { ...DEFAULT_SETTINGS, overtimeStartDate: '2026-11-02', overtimeStartBalance: 148 * 60 };
+    const e: TimeEntry[] = [{ id: 'a', date: '2026-11-02', kind: 'arbeit', start: '06:00', end: '19:45' }]; // 13:00 → +5:00
+    const g = glzAccount('2026-11-02', e, G);
+    expect(g.balance / 60).toBe(150);
+    expect(g.overCap / 60).toBe(3);
+    expect(DEFAULT_SETTINGS.glzFloorMin / 60).toBe(-150);
+    expect(DEFAULT_SETTINGS.overPayPct).toBe(25);
+    const neg = glzAccount('2026-11-02', [], { ...G, overtimeStartBalance: -149 * 60 });
+    expect(neg.balance / 60).toBe(-157); // Minus wird nicht gekappt (Warnung in der App)
   });
 });
