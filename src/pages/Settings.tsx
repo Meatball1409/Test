@@ -2,7 +2,8 @@ import { Logo } from '../brand';
 import { cloudEnabled } from '../config';
 import AccountSection from './Account';
 import { download, Field, PageHeader, pickFile, useToast } from '../components';
-import { db, exportAll, importAll, saveSettings, useSettings } from '../db';
+import { useEffect, useState } from 'react';
+import { db, exportAll, importAll, saveSettings, storageSelfTest, useSettings } from '../db';
 import { formatDateDE, formatMinutes, todayISO } from '../lib/dates';
 import { STATES, type StateCode } from '../lib/holidays';
 import { DEFAULT_SNIPPETS } from '../lib/snippets';
@@ -12,6 +13,8 @@ const DAYS = [[1, 'Mo'], [2, 'Di'], [3, 'Mi'], [4, 'Do'], [5, 'Fr'], [6, 'Sa'], 
 export default function SettingsPage() {
   const s = useSettings();
   const toast = useToast();
+  const [storage, setStorage] = useState<string | null>(null);
+  useEffect(() => { void storageSelfTest().then((r) => setStorage(r ?? 'ok')); }, []);
   const num = (k: keyof typeof s) => (e: React.ChangeEvent<HTMLInputElement>) => saveSettings({ [k]: Number(e.target.value) });
 
   async function uploadLogo() {
@@ -104,6 +107,18 @@ export default function SettingsPage() {
             <button className="btn" onClick={() => restore('merge')}>Sicherung zusammenführen</button>
             <button className="btn" onClick={() => restore('replace')}>Sicherung wiederherstellen</button>
             <button className="btn ghost" onClick={async () => { await db.snippets.bulkPut(DEFAULT_SNIPPETS); toast('Standard-Vorlagen wiederhergestellt'); }}>Standard-Vorlagen zurücksetzen</button>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>App</h2>
+          <dl className="rows">
+            <dt>Version</dt><dd>{__BUILD__}</dd>
+            <dt>Speicher</dt><dd>{storage === null ? 'wird geprüft …' : storage === 'ok' ? '✓ funktioniert' : '✗ ' + storage}</dd>
+          </dl>
+          <div className="row wrap">
+            <button className="btn" onClick={async () => { const r = await storageSelfTest(); setStorage(r ?? 'ok'); toast(r ? 'Speicher-Fehler: ' + r : 'Speicher funktioniert'); }}>Speicher prüfen</button>
+            <button className="btn" onClick={() => location.reload()}>Neu laden / Update holen</button>
           </div>
         </section>
       </div>

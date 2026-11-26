@@ -11,6 +11,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setMsg(null), 2200);
   }, []);
+  // Fehler aus allen Teilen der App sichtbar machen (z. B. Speichern fehlgeschlagen)
+  useEffect(() => {
+    const h = (e: Event) => show((e as CustomEvent<string>).detail);
+    window.addEventListener('techdesk-toast', h);
+    return () => window.removeEventListener('techdesk-toast', h);
+  }, [show]);
   return (
     <ToastCtx.Provider value={show}>
       {children}
@@ -18,6 +24,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     </ToastCtx.Provider>
   );
 }
+
+export const toastGlobal = (msg: string) => window.dispatchEvent(new CustomEvent('techdesk-toast', { detail: msg }));
 
 export async function copyText(text: string): Promise<boolean> {
   try {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Logo } from './brand';
+import { storageSelfTest } from './db';
 import { Icon, type IconName } from './icons';
 import Home from './pages/Home';
 import CalendarPage from './pages/Calendar';
@@ -33,6 +34,8 @@ export default function App() {
     window.addEventListener('hashchange', h);
     return () => window.removeEventListener('hashchange', h);
   }, []);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  useEffect(() => { void storageSelfTest().then(setStorageError); }, []);
   const R = ROUTES.find((r) => r.id === route) ?? ROUTES[0];
   return (
     <div className="shell">
@@ -54,7 +57,15 @@ export default function App() {
           </a>
         ))}
       </nav>
-      <main className="main"><R.C key={location.hash} /></main>
+      <main className="main">
+        {storageError && (
+          <div className="result bad" role="alert" style={{ marginBottom: '1rem' }}>
+            <b>Speichern auf diesem Gerät nicht möglich.</b> Mögliche Ursachen: privater Modus in Safari, Speicher voll oder „Alle Cookies blockieren“ (Einstellungen → Safari). Fehler: {storageError}
+            <div style={{ marginTop: '.5rem' }}><button className="btn small" onClick={() => location.reload()}>App neu laden</button></div>
+          </div>
+        )}
+        <R.C key={location.hash} />
+      </main>
     </div>
   );
 }
