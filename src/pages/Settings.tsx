@@ -1,7 +1,7 @@
 import { Logo } from '../brand';
 import { download, Field, PageHeader, pickFile, useToast } from '../components';
 import { db, exportAll, importAll, saveSettings, useSettings } from '../db';
-import { todayISO } from '../lib/dates';
+import { formatDateDE, formatMinutes, todayISO } from '../lib/dates';
 import { STATES, type StateCode } from '../lib/holidays';
 import { DEFAULT_SNIPPETS } from '../lib/snippets';
 
@@ -53,9 +53,20 @@ export default function SettingsPage() {
             </Field>
             <Field label="Reisezeit zählt zu (%)" hint="Laut Betriebsvereinbarung / Arbeitsvertrag"><input type="number" min={0} max={100} value={Math.round(s.travelFactor * 100)} onChange={(e) => saveSettings({ travelFactor: Number(e.target.value) / 100 })} /></Field>
             <Field label="Bereitschaft zählt zu (%)"><input type="number" min={0} max={100} value={Math.round(s.standbyFactor * 100)} onChange={(e) => saveSettings({ standbyFactor: Number(e.target.value) / 100 })} /></Field>
-            <Field label="Gesetzliche Mindestpause automatisch"><input type="checkbox" checked={s.autoLegalBreak} onChange={(e) => saveSettings({ autoLegalBreak: e.target.checked })} /></Field>
-            <Field label="Überstunden-Übertrag (h)" hint="Stand zum Startdatum"><input type="number" step="0.25" value={s.overtimeStartBalance / 60} onChange={(e) => saveSettings({ overtimeStartBalance: Math.round(Number(e.target.value) * 60) })} /></Field>
-            <Field label="Startdatum Überstundenkonto"><input type="date" max={todayISO()} value={s.overtimeStartDate} onChange={(e) => saveSettings({ overtimeStartDate: e.target.value })} /></Field>
+            <Field label="Pausenregel" wide hint={s.breakMode === 'firma' ? `Ab ${s.companyBreakFromMin / 60} h Anwesenheit werden ${s.companyBreakMin} min abgezogen (angezeigt ab ${s.companyBreakStart}). Darunter keine Pause.` : s.breakMode === 'gesetzlich' ? 'ArbZG §4: über 6 h → 30 min, über 9 h → 45 min (mindestens).' : 'Die Pause wird bei jedem Eintrag selbst eingetragen.'}>
+              <select value={s.breakMode} onChange={(e) => saveSettings({ breakMode: e.target.value as typeof s.breakMode })}>
+                <option value="firma">Firmenregel (automatisch)</option>
+                <option value="gesetzlich">Gesetzliche Mindestpause</option>
+                <option value="manuell">Manuell eintragen</option>
+              </select></Field>
+            {s.breakMode === 'firma' && <>
+              <Field label="Pause (min)"><input type="number" min={0} step={5} value={s.companyBreakMin} onChange={num('companyBreakMin')} /></Field>
+              <Field label="Ab Anwesenheit (h)"><input type="number" min={0} step={0.5} value={s.companyBreakFromMin / 60} onChange={(e) => saveSettings({ companyBreakFromMin: Math.round(Number(e.target.value) * 60) })} /></Field>
+              <Field label="Pause ab Uhrzeit"><input type="time" value={s.companyBreakStart} onChange={(e) => saveSettings({ companyBreakStart: e.target.value })} /></Field>
+            </>}
+            <Field label="Hinweise Arbeitszeitgesetz" hint="> 10 h, Ruhezeit < 11 h, Sonn-/Feiertag"><input type="checkbox" checked={s.arbzgWarnings} onChange={(e) => saveSettings({ arbzgWarnings: e.target.checked })} /></Field>
+            <Field label="Überstundenstand" wide hint={`${formatMinutes(s.overtimeStartBalance, true)} h zu Beginn vom ${formatDateDE(s.overtimeStartDate)} – ändern in der Zeiterfassung über „Stand anpassen“.`}>
+              <a className="btn" href="#/zeit/stand">Stand anpassen</a></Field>
           </div>
         </section>
 

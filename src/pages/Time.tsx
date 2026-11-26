@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { routeParam } from '../App';
 import { download, Field, Modal, PageHeader } from '../components';
-import { db, useSettings } from '../db';
-import { addDays, endOfMonth, formatDateDE, formatMinutes, MONTHS, startOfMonth, todayISO, uid, weekdayShort } from '../lib/dates';
-import { balanceDate, creditedMinutes, effectiveBreak, grossMinutes, overtimeBalance, summarizeRange, vacationUsed } from '../lib/time';
+import { db, saveSettings, useSettings } from '../db';
+import { addDays, endOfMonth, parseHours, formatDateDE, formatMinutes, MONTHS, startOfMonth, todayISO, uid, weekdayShort } from '../lib/dates';
+import { balanceDate, breakLabel, creditedMinutes, effectiveBreak, setBalanceAt, grossMinutes, overtimeBalance, summarizeRange, vacationUsed } from '../lib/time';
 import { TIME_KINDS, type TimeEntry, type TimeKind } from '../lib/types';
 
 const TIMED: TimeKind[] = ['arbeit', 'reise', 'bereitschaft'];
@@ -13,7 +14,9 @@ export default function TimePage() {
   const [month, setMonth] = useState(startOfMonth(todayISO()));
   const [edit, setEdit] = useState<TimeEntry | null>(null);
   const [onlyFilled, setOnlyFilled] = useState(false);
-  const all = useLiveQuery(() => db.times.toArray(), []) ?? [];
+  const [balanceOpen, setBalanceOpen] = useState(false);
+  const loaded = useLiveQuery(() => db.times.toArray(), []);
+  const all = loaded ?? [];
   const to = endOfMonth(month);
   const sum = summarizeRange(month, to, all, s);
   const cutoff = balanceDate(todayISO(), all);
@@ -42,7 +45,20 @@ export default function TimePage() {
     download(`Zeiten_${month.slice(0, 7)}.csv`, csv, 'text/csv;charset=utf-8');
   }
 
-  const newEntry = (date: string): TimeEntry => ({ id: uid(), date, kind: 'arbeit', start: '07:30', end: '16:30', breakMin: 30 });
+  // Neue Einträge übernehmen die zuletzt verwendeten Zeiten (z. B. 07:00–18:00)
+  const last = [...all].filter((e) => e.kind === 'arbeit' && e.start && e.end).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const newEntry = (date: string): TimeEntry => ({ id: uid(), date, kind: 'arbeit', start: last?.start ?? '07:00', end: last?.end ?? '16:00', breakMin: 0 });
+
+  // Direktaufruf: #/zeit/neu (Eintrag für heute) und #/zeit/stand (Überstundenstand)
+  const [handled, setHandled] = useState(false);
+  useEffect(() => {
+    if (handled || loaded === undefined) return;
+    const p = routeParam();
+    if (p === 'neu') setEdit(newEntry(todayISO()));
+    if (p === 'stand') setBalanceOpen(true);
+    if (p) history.replaceState(null, '', '#/zeit');
+    setHandled(true);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -62,7 +78,7 @@ export default function TimePage() {
         <div className="kpi"><span>Soll Monat</span><b>{formatMinutes(sum.target)}</b><small>{s.weeklyHours} h/Woche</small></div>
         <div className="kpi"><span>Ist Monat</span><b>{formatMinutes(sum.actual)}</b><small>davon Reise {formatMinutes(travel)}</small></div>
         <div className="kpi"><span>Saldo Monat</span><b className={monthDiff < 0 ? 'neg' : 'pos'}>{formatMinutes(monthDiff, true)}</b><small>Ist − Soll bis heute</small></div>
-        <div className="kpi"><span>Überstundenkonto</span><b className={balanceEnd < 0 ? 'neg' : 'pos'}>{formatMinutes(balanceEnd, true)}</b><small>seit {formatDateDE(s.overtimeStartDate)}</small></div>
+        <button className="kpi link" onClick={() => setBalanceOpen(true)}><span>Überstundenkonto</span><b className={balanceEnd < 0 ? 'neg' : 'pos'}>{formatMinutes(balanceEnd, true)}</b><small>Stand anpassen ›</small></button>
         <div className="kpi"><span>Urlaub {year}</span><b>{s.vacationDaysPerYear - vacUsed}</b><small>von {s.vacationDaysPerYear} Tagen übrig</small></div>
       </div>
 
@@ -78,7 +94,7 @@ export default function TimePage() {
                   <td>
                     {es.map((e) => (
                       <button key={e.id} className="entry" onClick={() => setEdit(e)}>
-                        {TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{TIMED.includes(e.kind) && e.end ? ` (P ${effectiveBreak(e, s)}′)` : ''}{e.customer ? ` · ${e.customer}` : ''}
+                        {TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.kind === 'arbeit' && e.end && effectiveBreak(e, s) ? ` · ${breakLabel(e, s)}` : ''}{e.customer ? ` · ${e.customer}` : ''}
                       </button>
                     ))}
                     <button className="entry add" onClick={() => setEdit(newEntry(d.date))} aria-label={`Eintrag am ${formatDateDE(d.date)} hinzufügen`}>+</button>
@@ -93,9 +109,10 @@ export default function TimePage() {
           </tbody>
         </table>
       </div>
-      <p className="muted small">Pausen werden {s.autoLegalBreak ? 'automatisch auf das gesetzliche Minimum (ArbZG §4: >6 h → 30 min, >9 h → 45 min) angehoben' : 'wie eingetragen berücksichtigt'}. Reisezeit zählt zu {Math.round(s.travelFactor * 100)} %, Bereitschaft zu {Math.round(s.standbyFactor * 100)} % – anpassbar in den Einstellungen gemäß eurer Betriebsvereinbarung.</p>
+      <p className="muted small">{s.breakMode === 'firma' ? `Pause: ab ${s.companyBreakFromMin / 60} h Anwesenheit werden automatisch ${s.companyBreakMin} min abgezogen (${s.companyBreakStart} Uhr).` : s.breakMode === 'gesetzlich' ? 'Pausen werden mindestens auf das gesetzliche Minimum angehoben (ArbZG §4).' : 'Pausen werden wie eingetragen berücksichtigt.'} Reisezeit zählt zu {Math.round(s.travelFactor * 100)} %, Bereitschaft zu {Math.round(s.standbyFactor * 100)} %. Ändern unter Einstellungen.</p>
 
       {edit && <EntryEditor entry={edit} onClose={() => setEdit(null)} />}
+      {balanceOpen && <BalanceEditor current={overtimeBalance(addDays(todayISO(), -1), all, s)} onClose={() => setBalanceOpen(false)} />}
     </>
   );
 }
@@ -132,12 +149,39 @@ function EntryEditor({ entry, onClose }: { entry: TimeEntry; onClose: () => void
         {timed && <>
           <Field label="Beginn"><input type="time" value={e.start ?? ''} onChange={(x) => set('start', x.target.value)} /></Field>
           <Field label="Ende"><input type="time" value={e.end ?? ''} onChange={(x) => set('end', x.target.value)} /></Field>
-          <Field label="Pause (min)" hint={e.kind === 'arbeit' && s.autoLegalBreak ? `Angerechnet: ${effectiveBreak(e, s)} min` : undefined}>
-            <input type="number" min={0} step={5} value={e.breakMin ?? 0} onChange={(x) => set('breakMin', Number(x.target.value))} /></Field>
+          {e.kind === 'arbeit' && s.breakMode === 'firma'
+            ? <Field label="Pause"><output>{breakLabel(e, s)}</output></Field>
+            : <Field label="Pause (min)" hint={e.kind === 'arbeit' && s.breakMode === 'gesetzlich' ? `Angerechnet: ${effectiveBreak(e, s)} min` : undefined}>
+                <input type="number" min={0} step={5} value={e.breakMin ?? 0} onChange={(x) => set('breakMin', Number(x.target.value))} /></Field>}
           <Field label="Angerechnet"><output>{formatMinutes(creditedMinutes(e, s))} h</output></Field>
         </>}
         <Field label="Kunde / Auftrag"><input value={e.customer ?? ''} onChange={(x) => set('customer', x.target.value)} /></Field>
         <Field label="Notiz" wide><input value={e.note ?? ''} onChange={(x) => set('note', x.target.value)} /></Field>
+      </div>
+    </Modal>
+  );
+}
+
+function BalanceEditor({ current, onClose }: { current: number; onClose: () => void }) {
+  const [text, setText] = useState(formatMinutes(current, true).replace('−', '-'));
+  const [date, setDate] = useState(todayISO());
+  const minutes = parseHours(text);
+  async function save() {
+    if (minutes === null) return;
+    await saveSettings(setBalanceAt(date, minutes));
+    onClose();
+  }
+  return (
+    <Modal title="Überstundenstand einstellen" onClose={onClose} footer={<>
+      <span className="spacer" />
+      <button className="btn" onClick={onClose}>Abbrechen</button>
+      <button className="btn primary" disabled={minutes === null} onClick={save}>Speichern</button>
+    </>}>
+      <div className="form">
+        <Field label="Aktueller Stand (Std:Min)" hint={minutes === null ? 'Bitte z. B. 23:15, -4:30 oder 12,5 eingeben' : `= ${formatMinutes(minutes, true)} h`}>
+          <input autoFocus inputMode="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. 23:15" /></Field>
+        <Field label="Stand zu Beginn von" hint="Alle Einträge ab diesem Tag werden dazugerechnet."><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <p className="muted small wide">Tipp: Den Stand aus deiner letzten Firmen-Abrechnung eintragen und als Datum den Tag danach wählen. Einträge vor diesem Datum zählen dann nicht mehr zum Konto.</p>
       </div>
     </Modal>
   );

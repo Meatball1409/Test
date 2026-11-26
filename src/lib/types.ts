@@ -56,7 +56,12 @@ export interface Settings {
   workDays: number[]; // 1=Mo … 5=Fr, 6=Sa, 0=So
   travelFactor: number; // Anteil der Reisezeit, der als Arbeitszeit zählt (0–1)
   standbyFactor: number; // Anteil Bereitschaft als Arbeitszeit
-  autoLegalBreak: boolean; // gesetzliche Mindestpause (ArbZG §4) automatisch abziehen
+  /** firma: feste Pause ab Schwelle (z. B. 45 min ab 8 h) · gesetzlich: Mindestpause ArbZG §4 · manuell: wie eingetragen */
+  breakMode: 'firma' | 'gesetzlich' | 'manuell';
+  companyBreakMin: number;
+  companyBreakFromMin: number; // ab dieser Anwesenheit (Minuten) wird die Firmenpause abgezogen
+  companyBreakStart: string; // nur zur Anzeige, z. B. 12:00
+  arbzgWarnings: boolean;
   overtimeStartBalance: number; // Minuten Übertrag
   overtimeStartDate: string;
   vacationDaysPerYear: number;
@@ -76,7 +81,11 @@ export const DEFAULT_SETTINGS: Settings = {
   workDays: [1, 2, 3, 4, 5],
   travelFactor: 1,
   standbyFactor: 0,
-  autoLegalBreak: true,
+  breakMode: 'firma',
+  companyBreakMin: 45,
+  companyBreakFromMin: 8 * 60,
+  companyBreakStart: '12:00',
+  arbzgWarnings: true,
   overtimeStartBalance: 0,
   overtimeStartDate: `${new Date().getFullYear()}-01-01`,
   vacationDaysPerYear: 30,

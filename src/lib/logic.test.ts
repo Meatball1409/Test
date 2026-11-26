@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { easterSunday, holidayName } from './holidays';
-import { creditedMinutes, legalBreak, overtimeBalance, summarizeDay, summarizeRange } from './time';
+import { parseHours } from './dates';
+import { breakLabel, creditedMinutes, legalBreak, overtimeBalance, summarizeDay, summarizeRange } from './time';
 import { mealAllowance, tripCosts } from './travel';
 import { fillTemplate, placeholders } from './templates';
 import { emptyReport, fsmText, missingFields } from './report';
 import { fromIcs, toIcs } from './ics';
 import { DEFAULT_SETTINGS, type Settings, type TimeEntry, type Trip } from './types';
 
-const S: Settings = { ...DEFAULT_SETTINGS, state: 'BW', overtimeStartDate: '2026-11-02' };
+const S: Settings = { ...DEFAULT_SETTINGS, state: 'BW', overtimeStartDate: '2026-11-02', breakMode: 'gesetzlich' };
+const F: Settings = { ...S, breakMode: 'firma' };
 const work = (date: string, start: string, end: string, breakMin = 0, kind: TimeEntry['kind'] = 'arbeit'): TimeEntry =>
   ({ id: date + start, date, start, end, breakMin, kind });
 
@@ -134,5 +136,40 @@ describe('Visa-Kompass', () => {
     expect(allowance('USA')).toMatchObject({ full: 59, partial: 40 });
     expect(allowance('USA')!.cities[0]).toMatchObject({ name: 'New York City', full: 66, partial: 44 });
     expect(isDomestic('DE')).toBe(true);
+  });
+});
+
+describe('Firmen-Pausenregel (45 min ab 8 h)', () => {
+  it('7:00–18:00 → 10:15', () => {
+    expect(creditedMinutes(work('2026-11-02', '07:00', '18:00'), F)).toBe(10 * 60 + 15);
+    expect(breakLabel(work('2026-11-02', '07:00', '18:00'), F)).toBe('Pause 12:00–12:45');
+  });
+  it('genau 8 h → Abzug, darunter nicht', () => {
+    expect(creditedMinutes(work('2026-11-02', '07:00', '15:00'), F)).toBe(7 * 60 + 15);
+    expect(creditedMinutes(work('2026-11-02', '07:00', '14:59'), F)).toBe(7 * 60 + 59);
+  });
+  it('eingetragene Pause wird ignoriert, Reisezeit ohne Abzug', () => {
+    expect(creditedMinutes(work('2026-11-02', '07:00', '18:00', 90), F)).toBe(10 * 60 + 15);
+    expect(creditedMinutes(work('2026-11-02', '06:00', '15:00', 0, 'reise'), F)).toBe(9 * 60);
+  });
+  it('keine Pausen-Warnung bei Firmenregel', () => {
+    const d = summarizeDay('2026-11-03', [work('2026-11-03', '07:00', '14:30')], F);
+    expect(d.warnings).toEqual([]);
+  });
+});
+
+describe('Überstundenstand eingeben', () => {
+  it('parseHours', () => {
+    expect(parseHours('23:15')).toBe(1395);
+    expect(parseHours('-4:30')).toBe(-270);
+    expect(parseHours('+12')).toBe(720);
+    expect(parseHours('12,5')).toBe(750);
+    expect(parseHours('−1:05')).toBe(-65);
+    expect(parseHours('abc')).toBeNull();
+  });
+  it('Stand ab Stichtag plus Einträge', () => {
+    const s2: Settings = { ...F, overtimeStartDate: '2026-11-23', overtimeStartBalance: 1395 };
+    // Mo 23.11. 7–18 = 10:15 → +2:15
+    expect(overtimeBalance('2026-11-23', [work('2026-11-23', '07:00', '18:00')], s2)).toBe(1395 + 135);
   });
 });

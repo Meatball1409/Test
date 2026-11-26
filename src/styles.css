@@ -108,6 +108,8 @@ picture { display: block; line-height: 0; }
 .kpi-ico { position: absolute; right: .9rem; top: .9rem; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--accent); background: var(--accent-soft); }
 .bar { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; margin: .35rem 0 .3rem; }
 .bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--sky)); }
+.kpi.link { cursor: pointer; transition: border-color .15s; }
+.kpi.link:hover { border-color: var(--accent); }
 .pos { color: var(--pos); } .neg { color: var(--neg); }
 
 /* Forms */
