@@ -55,10 +55,10 @@ describe('Arbeitszeit', () => {
     expect(summarizeDay('2026-11-02', [{ id: 'u', date: '2026-11-02', kind: 'urlaub' }], S).diff).toBe(0);
     expect(summarizeDay('2026-11-02', [{ id: 'g', date: '2026-11-02', kind: 'gleittag' }], S).diff).toBe(-480);
   });
-  it('warnt bei Ruhezeit < 11 h und > 10 h', () => {
+  it('warnt bei Ruhezeit < 11 h, aber nicht bei mehr als 10 h', () => {
     const d = summarizeDay('2026-11-03', [work('2026-11-03', '05:00', '17:00', 45)], S, [work('2026-11-02', '08:00', '22:00', 45)]);
     expect(d.warnings.some((w) => w.includes('Ruhezeit'))).toBe(true);
-    expect(d.warnings.some((w) => w.includes('10 h'))).toBe(true);
+    expect(d.warnings.some((w) => w.includes('10 h'))).toBe(false);
   });
 });
 

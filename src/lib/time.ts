@@ -163,8 +163,6 @@ export function summarizeDay(date: string, entries: TimeEntry[], s: Settings, pr
   // 24.12./31.12.: halber Tag frei (halber Urlaubstag) – die Hälfte des Solls gilt als erfüllt
   else if (target && halfDayName(date)) actual += Math.round(target / 2);
 
-  const workNet = w.worked;
-  if (s.arbzgWarnings && workNet > 10 * 60) warnings.push('Mehr als 10 h Arbeitszeit (§3 ArbZG)');
   if (s.breakMode === 'manuell') for (const e of entries) {
     if (WORK.has(e.kind) && (e.breakMin ?? 0) < legalBreak(grossMinutes(e.start, e.end)))
       warnings.push(`Pause unter gesetzlichem Minimum (${legalBreak(grossMinutes(e.start, e.end))} min)`);
