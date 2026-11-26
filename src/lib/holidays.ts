@@ -42,7 +42,8 @@ const RULES: Rule[] = [
   { name: 'Pfingstsonntag', date: easter(49), states: ['BB'] },
   { name: 'Pfingstmontag', date: easter(50) },
   { name: 'Fronleichnam', date: easter(60), states: ['BW', 'BY', 'HE', 'NW', 'RP', 'SL'] },
-  { name: 'Mariä Himmelfahrt', date: fixed(8, 15), states: ['SL'] },
+  // Bayern: in Gemeinden mit überwiegend katholischer Bevölkerung (der Großteil Bayerns)
+  { name: 'Mariä Himmelfahrt', date: fixed(8, 15), states: ['SL', 'BY'] },
   { name: 'Weltkindertag', date: fixed(9, 20), states: ['TH'] },
   { name: 'Tag der Deutschen Einheit', date: fixed(10, 3) },
   { name: 'Reformationstag', date: fixed(10, 31), states: ['BB', 'HB', 'HH', 'MV', 'NI', 'SN', 'ST', 'SH', 'TH'] },
@@ -65,4 +66,10 @@ export function holidayName(iso: string, state: StateCode): string | undefined {
   const key = `${year}-${state}`;
   if (!cache.has(key)) cache.set(key, holidays(year, state));
   return cache.get(key)!.get(iso);
+}
+
+/** Heiligabend und Silvester: halber Arbeitstag (halber Urlaubstag wird automatisch abgezogen) */
+export function halfDayName(iso: string): string | undefined {
+  const md = iso.slice(5);
+  return md === '12-24' ? 'Heiligabend (½ Tag)' : md === '12-31' ? 'Silvester (½ Tag)' : undefined;
 }

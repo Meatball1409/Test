@@ -233,3 +233,44 @@ describe('Ende-zu-Ende-Verschlüsselung', () => {
     expect(await open(await unwrapDek(r, normalizeRecovery(code.toLowerCase().replace(/-/g, ' '))), 'x/1', s)).toEqual({ a: 1 });
   });
 });
+
+import { halfDayName, holidays } from './holidays';
+import { vacationSummary, withCalendarVacation } from './time';
+describe('Bayern: Feiertage und Urlaub', () => {
+  const BY: Settings = { ...DEFAULT_SETTINGS, breakMode: 'firma', overtimeStartDate: '2026-01-01' };
+  it('Standard-Bundesland ist Bayern, 30 Urlaubstage', () => {
+    expect(DEFAULT_SETTINGS.state).toBe('BY');
+    expect(DEFAULT_SETTINGS.vacationDaysPerYear).toBe(30);
+  });
+  it('alle Feiertage Bayern 2026', () => {
+    expect([...holidays(2026, 'BY').entries()].sort()).toEqual([
+      ['2026-01-01', 'Neujahr'], ['2026-01-06', 'Heilige Drei Könige'], ['2026-04-03', 'Karfreitag'], ['2026-04-06', 'Ostermontag'],
+      ['2026-05-01', 'Tag der Arbeit'], ['2026-05-14', 'Christi Himmelfahrt'], ['2026-05-25', 'Pfingstmontag'], ['2026-06-04', 'Fronleichnam'],
+      ['2026-08-15', 'Mariä Himmelfahrt'], ['2026-10-03', 'Tag der Deutschen Einheit'], ['2026-11-01', 'Allerheiligen'],
+      ['2026-12-25', '1. Weihnachtstag'], ['2026-12-26', '2. Weihnachtstag'],
+    ]);
+    expect(halfDayName('2026-12-24')).toBe('Heiligabend (½ Tag)');
+  });
+  it('Urlaubskonto: 30 − ½ − ½ − Urlaub (nur Arbeitstage)', () => {
+    // Urlaub Mo 3.8.–Fr 14.8. = 10 Arbeitstage (Kalender), dazu 1 Tag aus der Zeiterfassung
+    const events = [{ id: 'u', title: 'Sommerurlaub', type: 'urlaub' as const, startDate: '2026-08-03', endDate: '2026-08-16' }];
+    const times: TimeEntry[] = [{ id: 'z', date: '2026-02-16', kind: 'urlaub' }];
+    const v = vacationSummary(2026, times, events, BY, '2026-11-26');
+    expect(v.halfTotal).toBe(1);
+    expect(v.taken).toBe(11);
+    expect(v.planned).toBe(0);
+    expect(v.remaining).toBe(18);
+  });
+  it('Urlaub über Weihnachten: 24./31.12. kosten nur die zweite Hälfte, Feiertage nichts', () => {
+    const events = [{ id: 'w', title: 'Weihnachten', type: 'urlaub' as const, startDate: '2026-12-21', endDate: '2027-01-06' }];
+    const v = vacationSummary(2026, [], events, BY, '2026-11-26');
+    // 21.–23.12. (3) + 24.12. (½) + 28.–30.12. (3) + 31.12. (½) = 7; 25./26.12. Feiertage
+    expect(v.planned).toBe(7);
+    expect(v.remaining).toBe(30 - 1 - 7);
+  });
+  it('Zeiterfassung: 24.12. halbes Soll erfüllt, Kalender-Urlaub erfüllt Soll', () => {
+    expect(summarizeDay('2026-12-24', [], BY).diff).toBe(-240);
+    const t = withCalendarVacation([], [{ id: 'u', title: 'U', type: 'urlaub', startDate: '2026-12-22', endDate: '2026-12-22' }]);
+    expect(summarizeDay('2026-12-22', t, BY).diff).toBe(0);
+  });
+});

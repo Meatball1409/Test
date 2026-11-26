@@ -1,5 +1,6 @@
 import { addDays, eachDay, timeToMinutes, weekday } from './dates';
-import { holidayName } from './holidays';
+import { halfDayName, holidayName } from './holidays';
+import type { CalendarEvent } from './types';
 import type { Settings, TimeEntry } from './types';
 
 /** Bruttodauer zwischen Start und Ende, Ende vor Start = über Mitternacht */
@@ -65,6 +66,7 @@ export interface DaySummary {
   diff: number;
   absence?: string;
   holiday?: string;
+  half?: string;
   warnings: string[];
 }
 
@@ -78,6 +80,8 @@ export function summarizeDay(date: string, entries: TimeEntry[], s: Settings, pr
   let actual = entries.reduce((sum, e) => sum + creditedMinutes(e, s), 0);
   // Urlaub/Krank: Soll gilt als erfüllt. Gleittag: kein Gutschrift → Überstunden werden abgebaut.
   if (absenceEntry) actual += target;
+  // 24.12./31.12.: halber Tag frei (halber Urlaubstag) – die Hälfte des Solls gilt als erfüllt
+  else if (target && halfDayName(date)) actual += Math.round(target / 2);
 
   const workNet = entries.filter((e) => e.kind === 'arbeit')
     .reduce((sum, e) => sum + Math.max(0, grossMinutes(e.start, e.end) - effectiveBreak(e, s)), 0);
@@ -94,7 +98,7 @@ export function summarizeDay(date: string, entries: TimeEntry[], s: Settings, pr
   }
   if (s.arbzgWarnings && entries.length > 0 && (weekday(date) === 0 || holiday)) warnings.push(holiday ? `Arbeit am Feiertag (${holiday})` : 'Sonntagsarbeit');
 
-  return { date, target, actual, diff: actual - target, absence: absenceEntry?.kind, holiday, warnings: [...new Set(warnings)] };
+  return { date, target, actual, diff: actual - target, absence: absenceEntry?.kind, holiday, half: target ? halfDayName(date) : undefined, warnings: [...new Set(warnings)] };
 }
 
 function workTimes(entries: TimeEntry[]) {
@@ -138,9 +142,52 @@ export function overtimeBalance(until: string, all: TimeEntry[], s: Settings): n
   return s.overtimeStartBalance + summarizeRange(s.overtimeStartDate, until, all, s).diff;
 }
 
+/**
+ * Urlaub aus dem Kalender als Zeiteinträge einbeziehen (ein Eintrag pro Tag),
+ * damit er auch in der Zeiterfassung das Soll erfüllt. Doppelte Tage werden nicht doppelt gezählt.
+ */
+export function withCalendarVacation(times: TimeEntry[], events: CalendarEvent[]): TimeEntry[] {
+  const have = new Set(times.filter((t) => t.kind === 'urlaub').map((t) => t.date));
+  const extra: TimeEntry[] = [];
+  for (const ev of events) {
+    if (ev.type !== 'urlaub') continue;
+    for (const d of eachDay(ev.startDate, ev.endDate)) {
+      if (have.has(d)) continue;
+      have.add(d);
+      extra.push({ id: `cal-${ev.id}-${d}`, date: d, kind: 'urlaub', note: ev.title });
+    }
+  }
+  return extra.length ? [...times, ...extra] : times;
+}
+
+export interface VacationSummary {
+  entitlement: number;
+  halfDays: { date: string; name: string }[];
+  halfTotal: number;
+  taken: number;
+  planned: number;
+  remaining: number;
+  days: { date: string; value: number }[];
+}
+
+/** Urlaubskonto eines Jahres: Anspruch − ½ Tage (24./31.12.) − genommen − geplant */
+export function vacationSummary(year: number, times: TimeEntry[], events: CalendarEvent[], s: Settings, today: string): VacationSummary {
+  const y = String(year);
+  const all = withCalendarVacation(times, events);
+  const halfDays = [`${y}-12-24`, `${y}-12-31`].filter((d) => isWorkday(d, s)).map((d) => ({ date: d, name: halfDayName(d)! }));
+  const halfSet = new Set(halfDays.map((h) => h.date));
+  const dates = [...new Set(all.filter((e) => e.kind === 'urlaub' && e.date.startsWith(y) && isWorkday(e.date, s)).map((e) => e.date))].sort();
+  // an 24./31.12. ist der halbe Tag schon über halfDays abgezogen; Urlaub kostet dort die andere Hälfte
+  const days = dates.map((d) => ({ date: d, value: halfSet.has(d) ? 0.5 : 1 }));
+  const taken = days.filter((d) => d.date <= today).reduce((a, d) => a + d.value, 0);
+  const planned = days.filter((d) => d.date > today).reduce((a, d) => a + d.value, 0);
+  const halfTotal = halfDays.length * 0.5;
+  return { entitlement: s.vacationDaysPerYear, halfDays, halfTotal, taken, planned, days, remaining: s.vacationDaysPerYear - halfTotal - taken - planned };
+}
+
 export function vacationUsed(year: number, all: TimeEntry[], s: Settings): number {
-  const days = new Set(all.filter((e) => e.kind === 'urlaub' && e.date.startsWith(String(year)) && isWorkday(e.date, s)).map((e) => e.date));
-  return days.size;
+  const v = vacationSummary(year, all, [], s, '9999-12-31');
+  return v.taken + v.halfTotal;
 }
 
 /** Stichtag für Salden: heute nur, wenn schon etwas eingetragen ist – sonst bis gestern (der Tag läuft noch). */

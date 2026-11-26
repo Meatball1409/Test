@@ -76,7 +76,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   id: 'main',
   name: '',
-  state: 'BW',
+  state: 'BY',
   weeklyHours: 40,
   workDays: [1, 2, 3, 4, 5],
   travelFactor: 1,

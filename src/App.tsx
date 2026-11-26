@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Logo } from './brand';
-import { BLOCKED_MSG, storageSelfTest } from './db';
+import { BLOCKED_MSG, migrateDefaults, storageSelfTest } from './db';
 import { Icon, type IconName } from './icons';
 import Home from './pages/Home';
 import CalendarPage from './pages/Calendar';
@@ -36,7 +36,7 @@ export default function App() {
   }, []);
   const [storageError, setStorageError] = useState<string | null>(null);
   useEffect(() => {
-    void storageSelfTest().then(setStorageError);
+    void storageSelfTest().then((r) => { setStorageError(r); if (!r) void migrateDefaults().catch(() => {}); });
     const h = () => setStorageError(BLOCKED_MSG);
     window.addEventListener('techdesk-storage', h);
     // sobald der andere Tab losgelassen hat, verschwindet der Hinweis von selbst
