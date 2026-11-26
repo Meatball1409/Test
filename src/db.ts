@@ -11,6 +11,7 @@ class TechDeskDB extends Dexie {
   reports!: Table<ServiceReport, string>;
   trips!: Table<Trip, string>;
   settings!: Table<Settings, string>;
+  meta!: Table<{ key: string; value: unknown }, string>;
   constructor() {
     super('techdesk');
     this.version(1).stores({
@@ -21,6 +22,8 @@ class TechDeskDB extends Dexie {
       trips: 'id, departure',
       settings: 'id',
     });
+    // v2: Metadaten für den Abgleich (Besitzer des lokalen Speichers, Stand)
+    this.version(2).stores({ meta: 'key' });
     this.on('populate', (tx) => {
       tx.table('snippets').bulkAdd(DEFAULT_SNIPPETS);
       tx.table('settings').add({ ...DEFAULT_SETTINGS, overtimeStartDate: todayISO() });
@@ -41,6 +44,23 @@ export async function saveSettings(patch: Partial<Settings>) {
 }
 
 const TABLES = ['events', 'times', 'snippets', 'reports', 'trips', 'settings'] as const;
+
+export async function getMeta<T>(k: string): Promise<T | undefined> {
+  return (await db.meta.get(k))?.value as T | undefined;
+}
+export async function setMeta(k: string, value: unknown) {
+  await db.meta.put({ key: k, value });
+}
+
+/** Alle Daten dieses Geräts löschen und Standardvorlagen neu anlegen (z. B. beim Abmelden) */
+export async function wipeLocal() {
+  await db.transaction('rw', [...TABLES.map((t) => db.table(t)), db.meta], async () => {
+    for (const t of TABLES) await db.table(t).clear();
+    await db.meta.clear();
+    await db.snippets.bulkAdd(DEFAULT_SNIPPETS);
+    await db.settings.add({ ...DEFAULT_SETTINGS, overtimeStartDate: todayISO() });
+  });
+}
 
 export async function exportAll(): Promise<string> {
   const data: Record<string, unknown[]> = {};

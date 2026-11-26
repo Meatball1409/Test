@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
+import { AuthGate } from './auth';
 import { ToastProvider } from './components';
 import './styles.css';
 
@@ -10,6 +11,6 @@ navigator.storage?.persist?.(); // Browser bitten, die Daten nicht automatisch z
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ToastProvider><App /></ToastProvider>
+    <ToastProvider><AuthGate><App /></AuthGate></ToastProvider>
   </StrictMode>,
 );

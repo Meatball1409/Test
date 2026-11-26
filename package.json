@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
     "dexie": "^4.4.7",
     "dexie-react-hooks": "^4.4.0",
     "pptxgenjs": "^4.0.1",

@@ -173,3 +173,63 @@ describe('Überstundenstand eingeben', () => {
     expect(overtimeBalance('2026-11-23', [work('2026-11-23', '07:00', '18:00')], s2)).toBe(1395 + 135);
   });
 });
+
+import { afterPush, hash, localChanges, planPull, stableStringify, type SyncTable } from './syncCore';
+describe('Abgleich (Sync)', () => {
+  const empty = () => ({ events: [], times: [], snippets: [], reports: [], trips: [], settings: [] } as Record<SyncTable, { id: string }[]>);
+  it('stabiler Hash unabhängig von Schlüssel-Reihenfolge', () => {
+    expect(stableStringify({ b: 1, a: { d: 2, c: [1, { y: 1, x: 2 }] } })).toBe('{"a":{"c":[1,{"x":2,"y":1}],"d":2},"b":1}');
+    expect(hash({ a: 1, b: 2 })).toBe(hash({ b: 2, a: 1 }));
+    expect(hash({ a: 1, u: undefined })).toBe(hash({ a: 1 }));
+  });
+  it('erkennt neue, geänderte und gelöschte Einträge', () => {
+    const l = empty();
+    l.times = [{ id: 'a', v: 1 } as { id: string }, { id: 'b', v: 1 } as { id: string }];
+    let changes = localChanges(l, {});
+    expect(changes.map((c) => c.id)).toEqual(['a', 'b']);
+    let h = afterPush({}, changes);
+    expect(localChanges(l, h)).toEqual([]);
+    l.times = [{ id: 'a', v: 2 } as { id: string }];
+    changes = localChanges(l, h);
+    expect(changes).toEqual([{ tbl: 'times', id: 'a', data: { id: 'a', v: 2 }, deleted: false }, { tbl: 'times', id: 'b', data: null, deleted: true }]);
+    h = afterPush(h, changes);
+    expect(Object.keys(h)).toEqual(['times/a']);
+  });
+  it('wendet Server-Änderungen an und merkt sich den Stand', () => {
+    const plan = planPull([
+      { tbl: 'times', id: 'a', data: { id: 'a', v: 3 }, deleted: false, updated_at: '2026-11-26T10:00:00Z' },
+      { tbl: 'trips', id: 'x', data: null, deleted: true, updated_at: '2026-11-26T11:00:00Z' },
+    ], { 'trips/x': 'h' });
+    expect(plan.put.times).toEqual([{ id: 'a', v: 3 }]);
+    expect(plan.del.trips).toEqual(['x']);
+    expect(plan.hashes).toEqual({ 'times/a': hash({ id: 'a', v: 3 }) });
+    expect(plan.maxTs).toBe('2026-11-26T11:00:00Z');
+    // danach keine erneute Übertragung des gleichen Stands
+    const l = empty(); l.times = [{ id: 'a', v: 3 } as { id: string }];
+    expect(localChanges(l, plan.hashes)).toEqual([]);
+  });
+});
+
+import { generateDek, newRecoveryCode, normalizeRecovery, open, seal, unwrapDek, wrapDek } from './e2e';
+describe('Ende-zu-Ende-Verschlüsselung', () => {
+  it('Datensatz ver- und entschlüsseln, an Tabelle/ID gebunden', async () => {
+    const dek = await generateDek();
+    const s = await seal(dek, 'times/a', { id: 'a', start: '07:00', customer: 'Musterfood' });
+    expect(JSON.stringify(s)).not.toContain('Musterfood');
+    expect(await open(dek, 'times/a', s)).toEqual({ id: 'a', start: '07:00', customer: 'Musterfood' });
+    await expect(open(dek, 'times/b', s)).rejects.toThrow();
+    await expect(open(await generateDek(), 'times/a', s)).rejects.toThrow();
+  });
+  it('Schlüssel nur mit richtigem Passwort bzw. Wiederherstellungscode', async () => {
+    const dek = await generateDek();
+    const w = await wrapDek(dek, 'mein-passwort-123', 1000);
+    const back = await unwrapDek(w, 'mein-passwort-123');
+    const s = await seal(dek, 'x/1', { a: 1 });
+    expect(await open(back, 'x/1', s)).toEqual({ a: 1 });
+    await expect(unwrapDek(w, 'falsch')).rejects.toThrow();
+    const code = newRecoveryCode();
+    expect(code).toMatch(/^([2-9A-Z]{4}-){6}[2-9A-Z]{2}$/);
+    const r = await wrapDek(dek, normalizeRecovery(code), 1000);
+    expect(await open(await unwrapDek(r, normalizeRecovery(code.toLowerCase().replace(/-/g, ' '))), 'x/1', s)).toEqual({ a: 1 });
+  });
+});

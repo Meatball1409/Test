@@ -55,6 +55,15 @@ python3 scripts/prepare_logo.py pfad/zum/logo.png   # macht Weiß transparent, s
 
 Alternativ kann jeder Nutzer in den Einstellungen ein eigenes Logo hochladen (hat Vorrang).
 
+## Persönliche Konten (Login)
+
+Jeder Servicetechniker meldet sich mit E-Mail und Passwort an und hat einen eigenen, **Ende-zu-Ende verschlüsselten** Bereich – auch der Admin kann keine Inhalte lesen.
+Die Daten werden zwischen Handy und PC abgeglichen, die App funktioniert weiter offline.
+Beim Abmelden werden die Daten vom Gerät entfernt. Zugang nur auf Einladung durch den Admin.
+
+Einrichtung des Servers: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md). Solange kein Server
+eingetragen ist (`src/config.ts`), läuft die App ohne Anmeldung nur lokal auf dem Gerät.
+
 ## Wichtige Hinweise
 
 - **Arbeitszeit-Regeln** (Reisezeit-Anrechnung, Bereitschaft, Pausen) sind in den Einstellungen anpassbar –
