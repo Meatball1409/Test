@@ -70,6 +70,8 @@ export interface Settings {
   separateSunHoliday: boolean; // Sonn-/Feiertagsstunden nicht ins Gleitzeitkonto, sondern separat (Auszahlung)
   nightStart: string;
   nightEnd: string;
+  nightSeparate: boolean; // Nachtstunden wie Überstunden: nicht ins Gleitzeitkonto, Auszahlung mit Zuschlag
+  nightPct: number;
   overtimeStartBalance: number; // Minuten Übertrag
   overtimeStartDate: string;
   vacationDaysPerYear: number;
@@ -102,6 +104,8 @@ export const DEFAULT_SETTINGS: Settings = {
   separateSunHoliday: true,
   nightStart: '22:00',
   nightEnd: '06:00',
+  nightSeparate: true,
+  nightPct: 25,
   overtimeStartBalance: 0,
   overtimeStartDate: `${new Date().getFullYear()}-01-01`,
   vacationDaysPerYear: 30,

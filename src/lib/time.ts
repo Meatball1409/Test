@@ -133,7 +133,8 @@ export interface DaySummary {
   sun: number; // Sonntagsstunden (50 %)
   hol: number; // Feiertagsstunden (100 %)
   night: number;
-  paidSeparately: number; // nicht im Gleitzeitkonto (Sonn-/Feiertag), wird separat ausgewiesen
+  paidSeparately: number; // nicht im Gleitzeitkonto (Sonn-/Feiertag, Nacht), wird separat ausgewiesen
+  nightPaid: number;
   absence?: string;
   holiday?: string;
   half?: string;
@@ -152,7 +153,10 @@ export function summarizeDay(date: string, entries: TimeEntry[], s: Settings, pr
   const sat = wd === 6 && !holiday ? w.worked : 0;
   const sun = wd === 0 && !holiday ? w.worked : 0;
   const hol = holiday ? w.worked : 0;
-  const paidSeparately = s.separateSunHoliday ? sun + hol : 0;
+  // Sonn-/Feiertag ganz separat; an anderen Tagen die Nachtstunden (wie Überstunden, Auszahlung mit Zuschlag)
+  const sunHol = s.separateSunHoliday ? sun + hol : 0;
+  const nightPaid = s.nightSeparate && !sunHol ? Math.min(w.night, w.worked) : 0;
+  const paidSeparately = sunHol + nightPaid;
   let actual = w.worked - paidSeparately;
   // Urlaub/Krank: Soll gilt als erfüllt. Gleittag: kein Gutschrift → Überstunden werden abgebaut.
   if (absenceEntry) actual += target;
@@ -175,7 +179,7 @@ export function summarizeDay(date: string, entries: TimeEntry[], s: Settings, pr
 
   return {
     date, target, actual, worked: w.worked, diff: actual - target, breakDeducted: w.breakDeducted, first: w.first, last: w.last,
-    sat, sun, hol, night: w.night, paidSeparately,
+    sat: Math.max(0, sat - nightPaid), sun, hol, night: w.night, paidSeparately, nightPaid,
     absence: absenceEntry?.kind, holiday, half: target ? halfDayName(date) : undefined, warnings: [...new Set(warnings)],
   };
 }
@@ -195,7 +199,7 @@ function earliestStart(entries: TimeEntry[]): number | undefined {
   return st.length ? Math.min(...st) : undefined;
 }
 
-export interface RangeSummary { days: DaySummary[]; target: number; actual: number; worked: number; diff: number; sat: number; sun: number; hol: number; night: number; paidSeparately: number }
+export interface RangeSummary { days: DaySummary[]; target: number; actual: number; worked: number; diff: number; sat: number; sun: number; hol: number; night: number; nightPaid: number; paidSeparately: number }
 
 export function summarizeRange(from: string, to: string, all: TimeEntry[], s: Settings): RangeSummary {
   const byDate = new Map<string, TimeEntry[]>();
@@ -212,7 +216,7 @@ export function summarizeRange(from: string, to: string, all: TimeEntry[], s: Se
   }
   const sum = (k: keyof DaySummary) => days.reduce((a, d) => a + (d[k] as number), 0);
   const target = sum('target'), actual = sum('actual');
-  return { days, target, actual, worked: sum('worked'), diff: actual - target, sat: sum('sat'), sun: sum('sun'), hol: sum('hol'), night: sum('night'), paidSeparately: sum('paidSeparately') };
+  return { days, target, actual, worked: sum('worked'), diff: actual - target, sat: sum('sat'), sun: sum('sun'), hol: sum('hol'), night: sum('night'), nightPaid: sum('nightPaid'), paidSeparately: sum('paidSeparately') };
 }
 
 export interface GlzAccount {
