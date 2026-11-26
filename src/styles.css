@@ -284,3 +284,4 @@ a.tag:hover { text-decoration: underline; }
 .btn.block { width: 100%; justify-content: center; min-height: 46px; }
 .sync-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .4rem; background: var(--pos); }
 .sync-dot.syncing { background: var(--accent); } .sync-dot.offline { background: var(--muted); } .sync-dot.error { background: var(--neg); }
+.recovery { display: block; text-align: center; font: 700 1.15rem/1.6 ui-monospace, Consolas, monospace; letter-spacing: .06em; padding: .9rem; border-radius: 12px; background: var(--accent-soft); color: var(--text); border: 1px dashed var(--accent); word-break: break-all; user-select: all; }

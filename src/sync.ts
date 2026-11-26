@@ -1,7 +1,8 @@
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { cloudEnabled, SUPABASE_ANON_KEY, SUPABASE_URL } from './config';
 import { db, getMeta, setMeta, wipeLocal } from './db';
-import { afterPush, localChanges, planPull, SYNC_TABLES, type Hashes, type RemoteRow, type SyncTable } from './lib/syncCore';
+import { open, seal, type Sealed } from './lib/e2e';
+import { afterPush, key, localChanges, planPull, SYNC_TABLES, type Hashes, type PushRow, type RemoteRow, type SyncTable } from './lib/syncCore';
 
 export const supabase: SupabaseClient | null = cloudEnabled
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
@@ -32,6 +33,8 @@ async function syncOnce() {
   if (!supabase) return;
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
+  const dek = await getMeta<CryptoKey>('dek');
+  if (!dek) return; // noch nicht entsperrt
   if (!navigator.onLine) { emit({ status: 'offline' }); return; }
   emit({ status: 'syncing', error: undefined });
   try {
@@ -40,7 +43,7 @@ async function syncOnce() {
 
     // 1. Beim ersten Mal auf diesem Gerät: erst alles vom Server holen
     if (!initialized) {
-      hashes = await pull(null, hashes);
+      hashes = await pull(null, hashes, dek);
       await setMeta('initialized', true);
     }
 
@@ -50,14 +53,16 @@ async function syncOnce() {
     const changes = localChanges(local, hashes);
     for (let i = 0; i < changes.length; i += 200) {
       const chunk = changes.slice(i, i + 200);
-      const { error } = await supabase.from('records').upsert(chunk, { onConflict: 'user_id,tbl,id' });
+      // Ende-zu-Ende: nur Geheimtext verlässt das Gerät
+      const sealed = await Promise.all(chunk.map(async (c: PushRow) => ({ ...c, data: c.deleted ? null : await seal(dek, key(c.tbl, c.id), c.data) })));
+      const { error } = await supabase.from('records').upsert(sealed, { onConflict: 'user_id,tbl,id' });
       if (error) throw error;
       hashes = afterPush(hashes, chunk);
       await setMeta('hashes', hashes);
     }
 
     // 3. Änderungen von anderen Geräten holen
-    hashes = await pull((await getMeta<string>('lastPull')) ?? null, hashes);
+    hashes = await pull((await getMeta<string>('lastPull')) ?? null, hashes, dek);
     const now = new Date().toISOString();
     await setMeta('lastSync', now);
     emit({ status: 'idle', lastSync: now });
@@ -66,8 +71,9 @@ async function syncOnce() {
   }
 }
 
-async function pull(since: string | null, hashes: Hashes): Promise<Hashes> {
+async function pull(since: string | null, hashes: Hashes, dek: CryptoKey): Promise<Hashes> {
   const rows: RemoteRow[] = [];
+  let unreadable = 0;
   for (let from = 0; ; from += 1000) {
     let q = supabase!.from('records').select('tbl,id,data,deleted,updated_at').order('updated_at').range(from, from + 999);
     if (since) q = q.gte('updated_at', since);
@@ -77,7 +83,14 @@ async function pull(since: string | null, hashes: Hashes): Promise<Hashes> {
     if (!data || data.length < 1000) break;
   }
   if (!rows.length) return hashes;
-  const plan = planPull(rows, hashes);
+  // Entschlüsseln; nicht entschlüsselbare (manipulierte/fremde) Datensätze werden verworfen
+  const plain: RemoteRow[] = [];
+  for (const r of rows) {
+    if (r.deleted || !r.data) { plain.push(r); continue; }
+    try { plain.push({ ...r, data: await open(dek, key(r.tbl, r.id), r.data as unknown as Sealed) }); } catch { unreadable++; }
+  }
+  if (unreadable) console.warn(`${unreadable} Datensatz/Datensätze nicht entschlüsselbar – ignoriert`);
+  const plan = planPull(plain, hashes);
   await db.transaction('rw', [...SYNC_TABLES.map((t) => db.table(t)), db.meta], async () => {
     pausedHooks = true;
     try {
@@ -111,12 +124,11 @@ if (supabase) {
 }
 
 /** Nach der Anmeldung: Gerät dem Nutzer zuordnen. Gehörten die Daten jemand anderem → vorher löschen. */
-export async function prepareForUser(session: Session) {
+export async function claimDevice(session: Session) {
   const owner = await getMeta<string>('owner');
   if (owner && owner !== session.user.id) await wipeLocal();
   // owner fehlt: Daten aus der Zeit vor der Anmeldung werden ins eigene Konto übernommen
   await setMeta('owner', session.user.id);
-  await syncNow();
 }
 
 /** Abmelden: erst noch abgleichen, dann alle Daten von diesem Gerät entfernen */

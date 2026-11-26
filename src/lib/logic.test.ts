@@ -209,3 +209,27 @@ describe('Abgleich (Sync)', () => {
     expect(localChanges(l, plan.hashes)).toEqual([]);
   });
 });
+
+import { generateDek, newRecoveryCode, normalizeRecovery, open, seal, unwrapDek, wrapDek } from './e2e';
+describe('Ende-zu-Ende-Verschlüsselung', () => {
+  it('Datensatz ver- und entschlüsseln, an Tabelle/ID gebunden', async () => {
+    const dek = await generateDek();
+    const s = await seal(dek, 'times/a', { id: 'a', start: '07:00', customer: 'Musterfood' });
+    expect(JSON.stringify(s)).not.toContain('Musterfood');
+    expect(await open(dek, 'times/a', s)).toEqual({ id: 'a', start: '07:00', customer: 'Musterfood' });
+    await expect(open(dek, 'times/b', s)).rejects.toThrow();
+    await expect(open(await generateDek(), 'times/a', s)).rejects.toThrow();
+  });
+  it('Schlüssel nur mit richtigem Passwort bzw. Wiederherstellungscode', async () => {
+    const dek = await generateDek();
+    const w = await wrapDek(dek, 'mein-passwort-123', 1000);
+    const back = await unwrapDek(w, 'mein-passwort-123');
+    const s = await seal(dek, 'x/1', { a: 1 });
+    expect(await open(back, 'x/1', s)).toEqual({ a: 1 });
+    await expect(unwrapDek(w, 'falsch')).rejects.toThrow();
+    const code = newRecoveryCode();
+    expect(code).toMatch(/^([2-9A-Z]{4}-){6}[2-9A-Z]{2}$/);
+    const r = await wrapDek(dek, normalizeRecovery(code), 1000);
+    expect(await open(await unwrapDek(r, normalizeRecovery(code.toLowerCase().replace(/-/g, ' '))), 'x/1', s)).toEqual({ a: 1 });
+  });
+});

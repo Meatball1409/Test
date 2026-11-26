@@ -36,11 +36,13 @@ Diese beiden Werte sind öffentlich und dürfen in die App. Sie werden in `src/c
 Startpasswort persönlich mitteilen. Der Kollege meldet sich an und ändert es unter
 **Einstellungen → Mein Konto → Passwort ändern**.
 
-- *Passwort vergessen:* Admin setzt unter Authentication → Users → Nutzer → „Reset password“ / neues Passwort.
+- Bei der **ersten Anmeldung** zeigt die App dem Kollegen einen **Wiederherstellungscode**. Er muss ihn sicher aufbewahren (z. B. Passwort-Manager).
+- *Passwort vergessen:* Admin setzt im Dashboard ein neues Passwort. Der Kollege meldet sich damit an und gibt seinen **Wiederherstellungscode** ein – danach ist alles wieder da. **Ohne Code sind seine bisherigen Daten nicht mehr lesbar** (er kann dann mit einem leeren Bereich neu beginnen).
 - *Kollege verlässt das Team:* Nutzer löschen – alle seine Daten werden automatisch mit gelöscht.
 
 ## Gut zu wissen
-- Die Trennung der Daten erzwingt der Server (Row Level Security): Jeder Nutzer kann nur seine eigenen Zeilen lesen und schreiben.
-- Übertragung verschlüsselt (HTTPS), Speicherung verschlüsselt (AES-256) in Frankfurt.
-- Der Projekt-Inhaber (Admin) kann im Supabase-Dashboard technisch alle Daten einsehen.
+- **Ende-zu-Ende-Verschlüsselung:** Die App verschlüsselt jeden Datensatz auf dem Gerät (AES-256-GCM), bevor er hochgeladen wird. Der Schlüssel ist mit dem Passwort des Nutzers gesichert (PBKDF2, 600.000 Runden). Auf dem Server liegt nur Geheimtext – **auch der Admin kann im Dashboard keine Inhalte lesen.**
+- Sichtbar für den Admin sind nur: E-Mail-Adressen der Nutzer, Anzahl der Einträge pro Bereich (z. B. „12 Zeiteinträge“) und wann sie geändert wurden.
+- Der Server lehnt unverschlüsselte Daten ab (CHECK-Regel) und trennt die Nutzer zusätzlich per Row Level Security.
+- Wer die App-Quelltexte ändern und veröffentlichen kann, könnte theoretisch eine manipulierte Version ausliefern – deshalb Änderungen nur über geprüfte Pull Requests.
 - Kostenloser Tarif: Projekte werden nach 7 Tagen ohne jede Nutzung pausiert und lassen sich im Dashboard wieder starten.

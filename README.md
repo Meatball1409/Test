@@ -57,7 +57,7 @@ Alternativ kann jeder Nutzer in den Einstellungen ein eigenes Logo hochladen (ha
 
 ## Persönliche Konten (Login)
 
-Jeder Servicetechniker meldet sich mit E-Mail und Passwort an und hat einen eigenen, geschützten Bereich.
+Jeder Servicetechniker meldet sich mit E-Mail und Passwort an und hat einen eigenen, **Ende-zu-Ende verschlüsselten** Bereich – auch der Admin kann keine Inhalte lesen.
 Die Daten werden zwischen Handy und PC abgeglichen, die App funktioniert weiter offline.
 Beim Abmelden werden die Daten vom Gerät entfernt. Zugang nur auf Einladung durch den Admin.
 
