@@ -1,35 +1,12 @@
-import { SUPABASE_URL } from './config';
 import { db, getMeta, setMeta } from './db';
 import { addDays, todayISO } from './lib/dates';
-import { activityToEvent, demoClient, effortToEntry, type FsmActivity, type FsmClient, type FsmReportPayload } from './lib/fsm';
+import { activityToEvent, demoClient, effortToEntry, type FsmActivity, type FsmClient } from './lib/fsm';
+import { bridgeClient, fsmBridge } from './lib/fsmBridge';
 import type { Settings } from './lib/types';
-import { supabase } from './sync';
-
-/**
- * Live-Anbindung: Die App spricht NICHT direkt mit FSM. Ein geschützter Server-Baustein
- * (supabase/functions/fsm) hält die FSM-Zugangsdaten, prüft die TechDesk-Anmeldung und
- * liefert nur die Einsätze/Zeiten des angemeldeten Technikers.
- */
-function liveClient(): FsmClient | null {
-  if (!supabase || !SUPABASE_URL) return null;
-  const call = async <T,>(path: string, init?: RequestInit): Promise<T> => {
-    const { data } = await supabase!.auth.getSession();
-    if (!data.session) throw new Error('Nicht angemeldet');
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/fsm${path}`, { ...init, headers: { 'content-type': 'application/json', authorization: `Bearer ${data.session.access_token}`, ...(init?.headers ?? {}) } });
-    if (!res.ok) throw new Error(`FSM-Schnittstelle: ${res.status} ${await res.text()}`);
-    return res.json() as Promise<T>;
-  };
-  return {
-    mode: 'live',
-    activities: (from, to) => call(`/activities?from=${from}&to=${to}`),
-    timeEfforts: (from, to) => call(`/time-efforts?from=${from}&to=${to}`),
-    sendReport: (p: FsmReportPayload) => call('/report', { method: 'POST', body: JSON.stringify(p) }),
-  };
-}
 
 export function fsmClient(s: Settings): FsmClient | null {
   if (s.fsmMode === 'demo') return demoClient(todayISO);
-  if (s.fsmMode === 'live') return liveClient();
+  if (s.fsmMode === 'live') { const b = fsmBridge(); return b ? bridgeClient(b) : null; }
   return null;
 }
 
@@ -38,7 +15,7 @@ export interface FsmSyncResult { activities: number; efforts: number; at: string
 /** Einsätze (−14 … +28 Tage) in den Kalender und gebuchte Zeiten in die Zeiterfassung übernehmen */
 export async function syncFsm(s: Settings, what: { calendar?: boolean; times?: boolean } = { calendar: true, times: true }): Promise<FsmSyncResult> {
   const c = fsmClient(s);
-  if (!c) throw new Error('FSM ist nicht verbunden');
+  if (!c) throw new Error(s.fsmMode === 'live' ? 'Live-Abgleich geht nur, wenn TechDesk in der SAP-FSM-App geöffnet ist' : 'FSM ist nicht verbunden');
   const from = addDays(todayISO(), -14), to = addDays(todayISO(), 28);
   const acts = await c.activities(from, to);
   const efforts = what.times ? await c.timeEfforts(from, to) : [];

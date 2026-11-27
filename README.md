@@ -55,14 +55,12 @@ python3 scripts/prepare_logo.py pfad/zum/logo.png   # macht Weiß transparent, s
 
 Alternativ kann jeder Nutzer in den Einstellungen ein eigenes Logo hochladen (hat Vorrang).
 
-## Persönliche Konten (Login)
+## Kein Server, keine eigenen Konten
 
-Jeder Servicetechniker meldet sich mit E-Mail und Passwort an und hat einen eigenen, **Ende-zu-Ende verschlüsselten** Bereich – auch der Admin kann keine Inhalte lesen.
-Die Daten werden zwischen Handy und PC abgeglichen, die App funktioniert weiter offline.
-Beim Abmelden werden die Daten vom Gerät entfernt. Zugang nur auf Einladung durch den Admin.
-
-Einrichtung des Servers: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md). Solange kein Server
-eingetragen ist (`src/config.ts`), läuft die App ohne Anmeldung nur lokal auf dem Gerät.
+TechDesk hat **keinen eigenen Server** und **keine eigene Benutzerverwaltung**. Alle Daten liegen nur auf dem Gerät
+(offline nutzbar); zwischen Handy und PC per Sicherungsdatei übertragen.
+Anmeldung und Konten bleiben vollständig bei der IT: In der SAP-FSM-App läuft TechDesk als Web Container und nutzt
+die FSM-Anmeldung des Technikers – siehe [docs/FSM_INTEGRATION.md](docs/FSM_INTEGRATION.md).
 
 ## Wichtige Hinweise
 
@@ -75,7 +73,7 @@ eingetragen ist (`src/config.ts`), läuft die App ohne Anmeldung nur lokal auf d
 
 ## Roadmap (nächste Ausbaustufen)
 
-- [ ] Team-Sync (gemeinsame Vorlagen & Kalender) über ein Backend, z. B. Supabase/Firebase oder SharePoint
+- [ ] Team-Vorlagen über eine von der IT bereitgestellte Ablage (z. B. SharePoint) – ohne eigenen Server
 - [ ] Fotos im Servicebericht (Kamera) und in der Kunden-PDF
 - [ ] Spracheingabe für Berichte (Diktat)
 - [ ] Belege fotografieren (Spesen)

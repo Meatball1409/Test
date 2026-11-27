@@ -1,39 +1,71 @@
-# TechDesk ↔ SAP FSM – Anbindung (Vorschlag für die IT)
+# TechDesk ↔ SAP FSM – Anbindung ohne eigenen Server (Vorschlag für die IT)
 
-## Ziel
-Servicetechniker sehen ihre FSM-Einsätze im TechDesk-Kalender, gebuchte Zeiten fließen in die
-persönliche Zeitübersicht, Berichte starten vorausgefüllt (Kunde, Maschine, Einsatz) und können
-als Text/PDF an den Einsatz zurückgegeben werden. FSM bleibt das führende System.
+## Vorgaben
+- **Es gibt keinen TechDesk-Server.** Kein Backend, keine Datenbank, keine eigene Cloud.
+- **Anmeldung und Kontoverwaltung liegen vollständig bei der IT.** TechDesk hat keine eigenen
+  Benutzer, Passwörter oder Einladungen.
+- FSM bleibt das führende System.
 
-## Architektur
+## Lösung: TechDesk als „Web Container“ in der SAP-FSM-Mobile-App
+SAP sieht genau diesen Fall vor: Eine Web-App (PWA) wird in FSM unter
+**Admin → Company → Web Containers** eingetragen und läuft dann *innerhalb* der FSM-App.
+Mit aktivierter **JavaScript Bridge** stellt die FSM-App der Web-App den Kontext bereit.
+
 ```
-Handy/PC (TechDesk-App)  ──HTTPS + Login-Token──▶  TechDesk-Server (Edge Function, EU)  ──OAuth2──▶  SAP FSM API
-       nur eigene Daten                                hält FSM-Zugang, filtert pro Person            Query API / Data API
+                 IT verwaltet: Firmen-Login (SSO), FSM-Benutzer, Rollen, Web Container
+                                          │
+ Techniker ──Login──▶ SAP-FSM-Mobile-App ─┤ JavaScript Bridge (window.fsmHost)
+                                          ▼
+                          TechDesk (statische Dateien, im Web Container)
+                             │  Token des angemeldeten Technikers (nur im Speicher)
+                             ▼
+                          SAP FSM Query API (nur lesend)
+ Eigene Daten (Zeiten, Berichte, Reisen) bleiben lokal auf dem Gerät (IndexedDB).
 ```
-- Die App enthält **keine** FSM-Zugangsdaten. Client-ID/Secret liegen nur als Secret auf dem Server.
-- Der Server prüft die Anmeldung und ermittelt die FSM-Person über die E-Mail. Er liefert **nur** Einsätze
-  (`Activity` mit dem Techniker als Verantwortlichem) und **nur** dessen Zeitbuchungen (`TimeEffort`).
-- Lesend über die Query API (CoreSQL); Schreiben (Bericht) erst nach gesonderter Freigabe.
-- TechDesk-Daten sind Ende-zu-Ende verschlüsselt (AES-256-GCM, Schlüssel nur beim Nutzer),
-  Server in Frankfurt, Row Level Security pro Nutzer.
+
+1. Der Techniker meldet sich wie gewohnt **in der FSM-App** an (Firmen-Login, von der IT verwaltet).
+2. TechDesk fragt über die Bridge `CONTEXT_REQUEST` (Cluster, Account, Company, kurzlebiges
+   OAuth-Token des Technikers) und `GET_LOGGED_IN_PERSON` (FSM-Person-ID) ab.
+3. Mit diesem Token liest TechDesk die Query API: **nur** Einsätze (`Activity`), bei denen der Techniker
+   verantwortlich ist, und **nur** seine Zeitbuchungen (`TimeEffort`). Es gelten exakt die
+   FSM-Rechte, die die IT dem Benutzer gegeben hat.
+4. Das Token wird bei jedem Abgleich neu geholt und **nie gespeichert**.
+
+### Was dadurch wegfällt
+| Bisheriger Entwurf | Jetzt |
+|---|---|
+| TechDesk-Server (Supabase, Frankfurt) | entfällt |
+| Eigene Konten, Passwörter, Einladungen | entfällt – Login nur über FSM / Firmen-SSO |
+| FSM-API-Client mit Client-Secret | entfällt – kein Geheimnis in App oder Server |
+| Datenablage in der Cloud | entfällt – Daten nur auf dem Gerät des Technikers |
 
 ## Was die IT bereitstellen müsste
 | Punkt | Details |
 |---|---|
-| OAuth-Client | Grant `client_credentials`, eigene Berechtigungsgruppe |
-| Leserechte | Activity, ServiceCall, BusinessPartner (Name), Address, Equipment, Person (E-Mail → ID), TimeEffort, TimeTask |
-| Schreibrechte (optional, Phase 2) | Notiz/Anhang am Activity bzw. Service-Bericht |
-| Angaben | Rechenzentrum (z. B. `eu.fsm.cloud.sap`), Account-ID, Company-ID |
-| Test | Zugang zu einem Test-/Sandbox-Mandanten, wenn vorhanden |
+| Hosting | TechDesk als **statische Dateien** (HTML/JS/CSS, ohne Server-Logik) auf einem Firmen-Webserver bzw. einer von der IT gewählten Ablage mit HTTPS. Für den Pilot reicht die vorhandene Test-Adresse. |
+| Web Container | Admin → Company → Web Containers: Name „TechDesk“, URL, Objekttyp (z. B. Activity/Person), **JavaScript Bridge enabled** |
+| Authentication Key (optional) | Wird im Web Container gesetzt und beim Build als `VITE_FSM_BRIDGE_KEY` eingetragen |
+| Rechte der Techniker | Lesen: Activity, ServiceCall, BusinessPartner (Name), Address, Equipment, Person, TimeEffort, TimeTask (meist schon vorhanden) |
+| Voraussetzung | FSM-Mobile-App ab Release 26.10.0 (JavaScript Bridge) |
+| Test | Test-/Sandbox-Mandant, falls vorhanden |
+
+**Im Pilot zu prüfen:** dass die Query API Aufrufe aus dem Web Container zulässt (CORS) und die
+Feldnamen/DTO-Versionen des Mandanten (`src/lib/fsmBridge.ts`, Abfragen `activitiesQuery`/`effortsQuery`).
+
+## Phase 2 (optional, nur nach Freigabe)
+Bericht zurück an den Einsatz – ebenfalls über die Bridge, ohne Server
+(`ATTACHMENT_ADD` am Activity bzw. `TIME_EFFORT_SAVE`). Bis dahin wird der Berichtstext kopiert und
+in FSM eingefügt.
+
+## Außerhalb von FSM (PC-Browser)
+TechDesk funktioniert weiter ohne FSM und ohne Anmeldung: alle Daten lokal auf dem Gerät,
+Übertragung zwischen Geräten per Sicherungsdatei. Der FSM-Abgleich ist dort nicht verfügbar.
 
 ## Datenschutz
 - Zweck: Arbeitserleichterung für den einzelnen Techniker; keine Auswertung über Mitarbeitende hinweg.
-- Jeder sieht nur eigene Daten; der Server speichert keine FSM-Daten dauerhaft (Durchreichen).
-- Zeitdaten: Abstimmung mit Datenschutz und Betriebsrat (§ 87 Abs. 1 Nr. 6 BetrVG) vor dem Livegang.
+- Keine personenbezogenen Daten verlassen das Gerät Richtung Dritte; es gibt keinen TechDesk-Server.
+- Abschalten jederzeit durch die IT: Web Container deaktivieren bzw. Rechte in FSM entziehen.
+- Abstimmung mit Datenschutz und Betriebsrat vor dem Pilot.
 
-## Stufen
-1. **Demo** (jetzt): Demo-Modus in der App mit Testdaten.
-2. **Lesen** (nach Freigabe): Einsätze → Kalender, Zeiten → Zeitübersicht, Berichtskopf vorausfüllen.
-3. **Schreiben** (optional): Bericht als Text/PDF an den Einsatz.
-
-Code: `supabase/functions/fsm/index.ts` (Entwurf, Feldnamen mit FSM-Admin abzustimmen), `src/fsmSync.ts`, `src/lib/fsm.ts`.
+## Demo-Modus
+Einstellungen → SAP FSM → **Demo**: zeigt den Ablauf mit erfundenen Testdaten, ohne jeden Zugriff auf FSM.
