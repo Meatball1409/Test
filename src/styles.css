@@ -350,3 +350,18 @@ a.tag:hover { text-decoration: underline; }
 .fsm-note { margin: 0 0 .9rem; padding: .7rem .85rem; border-radius: 12px; background: var(--accent-soft); font-size: .9rem; line-height: 1.45; }
 .fsm-note small { color: var(--muted); }
 .fsm-rules { margin: .2rem 0 .6rem; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .3rem; }
+
+/* SAP Concur */
+.expense { grid-template-columns: 9.5rem 9rem 6.5rem 1fr 2.6rem auto; align-items: center; }
+@media (max-width: 700px) {
+  .expense { grid-template-columns: 1fr 1fr 2.6rem; grid-template-areas: "d c r" "a n x"; padding-bottom: .5rem; border-bottom: 1px solid var(--line); }
+  .expense > :nth-child(1) { grid-area: d; } .expense > :nth-child(2) { grid-area: c; } .expense > input:nth-child(3) { grid-area: a; }
+  .expense > input:nth-child(4) { grid-area: n; } .expense > :nth-child(5) { grid-area: r; } .expense > :nth-child(6) { grid-area: x; justify-self: center; }
+}
+.receipt { width: 2.6rem; height: 2.6rem; border-radius: 8px; border: 1px dashed var(--line); background: var(--field); display: grid; place-items: center; padding: 0; overflow: hidden; cursor: pointer; font-size: 1.1rem; }
+.receipt.has { border-style: solid; }
+.receipt img { width: 100%; height: 100%; object-fit: cover; }
+.expense .sent { color: var(--pos); font-weight: 800; padding: 0 .5rem; }
+.tag.concur { margin-left: .35rem; vertical-align: 2px; }
+.concur-card { margin-bottom: 1rem; }
+.concur-card p { margin: .35rem 0; }

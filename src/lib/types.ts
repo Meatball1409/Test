@@ -75,6 +75,8 @@ export interface Settings {
   nightStart: string;
   nightEnd: string;
   fsmMode: 'aus' | 'demo' | 'live';
+  /** SAP Concur über die Integrationsplattform der IT */
+  concurMode: 'aus' | 'demo' | 'live';
   nightSeparate: boolean; // Nachtstunden wie Überstunden: nicht ins Gleitzeitkonto, Auszahlung mit Zuschlag
   nightPct: number;
   overtimeStartBalance: number; // Minuten Übertrag
@@ -110,6 +112,7 @@ export const DEFAULT_SETTINGS: Settings = {
   nightStart: '22:00',
   nightEnd: '06:00',
   fsmMode: 'aus',
+  concurMode: 'aus',
   nightSeparate: true,
   nightPct: 25,
   overtimeStartBalance: 0,
@@ -158,7 +161,21 @@ export interface ServiceReport {
   fsm?: { activityId: string; code: string; sentAt?: string };
 }
 
-export interface Expense { id: string; date: string; category: string; amount: number; note?: string }
+export interface Expense {
+  id: string; date: string; category: string; amount: number; note?: string;
+  /** Belegfoto (JPEG, verkleinert) */
+  receipt?: string;
+  /** SAP Concur: ID der Ausgabe und Stand der letzten Übertragung */
+  concur?: { id: string; hash: string };
+}
+export type ConcurStatus = 'Entwurf' | 'Eingereicht' | 'Genehmigt' | 'Bezahlt' | 'Zurückgewiesen';
+export interface TripConcur {
+  reportId?: string; status?: ConcurStatus; total?: number; currency?: string;
+  /** aus Concur Travel gebuchte Reise */
+  itineraryId?: string;
+  mileage?: { id: string; hash: string };
+  syncedAt?: string;
+}
 export interface ChecklistItem { id: string; text: string; done: boolean }
 
 export interface Trip {
@@ -182,4 +199,5 @@ export interface Trip {
   checklist: ChecklistItem[];
   expenses: Expense[];
   notes?: string;
+  concur?: TripConcur;
 }
