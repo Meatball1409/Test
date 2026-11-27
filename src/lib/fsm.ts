@@ -11,41 +11,79 @@ export interface FsmActivity {
   id: string;
   code: string; // Einsatznummer
   subject: string;
-  status: 'OPEN' | 'CLOSED';
+  status: 'OPEN' | 'CLOSED'; // Abschluss erfolgt in FSM
   start: string; // ISO lokal 'YYYY-MM-DDTHH:MM'
   end: string;
   serviceCall: { code: string; subject: string };
   customer: string;
   address: string;
   equipment: { serial: string; name: string };
+  remarks?: string;
 }
-export interface FsmTimeEffort { id: string; activityId: string; task: 'Reisezeit' | 'Kundenbesuch' | 'Arbeitszeit'; start: string; end: string }
-export interface FsmReportPayload { activityId: string; text: string; pdfFileName?: string }
+export type FsmTask = 'Reisezeit' | 'Kundenbesuch' | 'Arbeitszeit';
+export interface FsmTimeEffort { id: string; activityId: string; task: FsmTask; start: string; end: string; breakMin?: number; remarks?: string }
+export interface FsmReportPayload { activityId: string; text: string; html?: string; fileName?: string }
+/** Schreibbare Felder eines Einsatzes (Termine plant die Disposition in FSM) */
+export interface FsmActivityWrite { id?: string; subject: string; remarks?: string }
+export type FsmEffortWrite = Omit<FsmTimeEffort, 'id'> & { id?: string };
 
 export interface FsmClient {
   mode: 'demo' | 'live';
   activities(from: string, to: string): Promise<FsmActivity[]>;
   timeEfforts(from: string, to: string): Promise<FsmTimeEffort[]>;
+  /** legt an (ohne id) oder ändert; liefert die FSM-ID */
+  saveActivity(a: FsmActivityWrite): Promise<string>;
+  saveTimeEffort(e: FsmEffortWrite): Promise<string>;
   sendReport(p: FsmReportPayload): Promise<{ ok: true; at: string }>;
 }
+
+/** FSM liefert UTC ('…Z' bzw. mit Offset) → lokale Zeit 'YYYY-MM-DDTHH:MM'. Ohne Zone: unverändert. */
+export function toLocal(dt: string): string {
+  if (!dt) return '';
+  if (!/(Z|[+-]\d\d:?\d\d)$/.test(dt)) return dt.slice(0, 16);
+  const d = new Date(dt);
+  if (isNaN(d.getTime())) return dt.slice(0, 16);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+/** lokale Zeit 'YYYY-MM-DDTHH:MM' → ISO UTC für FSM */
+export const toUtc = (local: string) => new Date(local).toISOString();
 
 export function activityToEvent(a: FsmActivity): CalendarEvent {
   return {
     id: `fsm-${a.id}`, type: 'einsatz', title: a.subject,
-    startDate: a.start.slice(0, 10), endDate: a.end.slice(0, 10),
-    startTime: a.start.slice(11, 16), endTime: a.end.slice(11, 16),
+    startDate: a.start.slice(0, 10), endDate: (a.end || a.start).slice(0, 10),
+    startTime: a.start.slice(11, 16) || undefined, endTime: a.end.slice(11, 16) || undefined,
     customer: a.customer, location: a.address, machine: a.equipment.serial,
-    notes: `FSM-Einsatz ${a.code} · Serviceauftrag ${a.serviceCall.code}\n${a.equipment.name}`,
+    notes: a.remarks ?? '',
+    fsm: { code: a.code, serviceCall: a.serviceCall.code, equipment: a.equipment.name },
   };
 }
+
+export const kindToTask = (k: TimeEntry['kind']): FsmTask => (k === 'reise' ? 'Reisezeit' : k === 'kunde' ? 'Kundenbesuch' : 'Arbeitszeit');
 
 export function effortToEntry(t: FsmTimeEffort, activities: FsmActivity[]): TimeEntry {
   const a = activities.find((x) => x.id === t.activityId);
   return {
     id: `fsm-${t.id}`, date: t.start.slice(0, 10), kind: t.task === 'Reisezeit' ? 'reise' : t.task === 'Kundenbesuch' ? 'kunde' : 'arbeit',
-    start: t.start.slice(11, 16), end: t.end.slice(11, 16), breakMin: 0, customer: a?.customer, note: a ? `FSM ${a.code}` : 'FSM',
+    start: t.start.slice(11, 16), end: t.end.slice(11, 16), breakMin: t.breakMin ?? 0, customer: a?.customer, note: t.remarks ?? '',
+    fsm: { activityId: t.activityId, code: a?.code },
   };
 }
+
+/** Zeiteintrag → Zeitbuchung (nur mit Einsatz und Uhrzeiten) */
+export function entryToEffort(e: TimeEntry): FsmEffortWrite | null {
+  const activityId = e.fsm?.activityId;
+  if (!activityId || !e.start || !e.end || !['arbeit', 'kunde', 'reise'].includes(e.kind)) return null;
+  const endDate = e.end <= e.start ? addDays(e.date, 1) : e.date; // über Mitternacht
+  return {
+    id: e.id.startsWith('fsm-') ? e.id.slice(4) : undefined, activityId, task: kindToTask(e.kind),
+    start: `${e.date}T${e.start}`, end: `${endDate}T${e.end}`, breakMin: e.breakMin ?? 0, remarks: e.note ?? '',
+  };
+}
+export const eventToActivity = (e: CalendarEvent): FsmActivityWrite => ({
+  id: e.id.startsWith('fsm-') ? e.id.slice(4) : undefined, subject: e.title, remarks: e.notes ?? '',
+});
 
 /* ---------- Demo ---------- */
 
@@ -92,11 +130,50 @@ export function demoData(today: string): { activities: FsmActivity[]; efforts: F
   return { activities, efforts };
 }
 
-export function demoClient(today: () => string): FsmClient {
+/** Demo-Speicher: was in der Präsentation „an FSM gesendet“ wird, bleibt im Browser erhalten */
+export interface DemoStore { activities: Record<string, FsmActivity>; efforts: Record<string, FsmTimeEffort>; n: number }
+const STORE_KEY = 'techdesk-fsm-demo';
+function loadStore(): DemoStore {
+  try { const v = JSON.parse(localStorage.getItem(STORE_KEY) ?? ''); if (v && v.activities) return v; } catch { /* leer */ }
+  return { activities: {}, efforts: {}, n: 0 };
+}
+function saveStore(st: DemoStore) { try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch { /* egal */ } }
+
+export function demoClient(today: () => string, store: { load: () => DemoStore; save: (s: DemoStore) => void } = { load: loadStore, save: saveStore }): FsmClient {
+  const all = () => {
+    const st = store.load(), d = demoData(today());
+    const acts = new Map(d.activities.map((a) => [a.id, a]));
+    for (const a of Object.values(st.activities)) acts.set(a.id, a);
+    const efforts = new Map(d.efforts.map((t) => [t.id, t]));
+    for (const t of Object.values(st.efforts)) efforts.set(t.id, t);
+    return { st, acts: [...acts.values()], efforts: [...efforts.values()] };
+  };
   return {
     mode: 'demo',
-    async activities(from, to) { await delay(); return demoData(today()).activities.filter((a) => a.end.slice(0, 10) >= from && a.start.slice(0, 10) <= to); },
-    async timeEfforts(from, to) { await delay(); return demoData(today()).efforts.filter((t) => t.start.slice(0, 10) >= from && t.start.slice(0, 10) <= to); },
+    // Neu angelegte Einsätze tauchen (wie in FSM) erst nach der Disposition in der eigenen Liste auf
+    async activities(from, to) { await delay(); return all().acts.filter((a) => !a.id.startsWith('DEMO-N') && a.end.slice(0, 10) >= from && a.start.slice(0, 10) <= to); },
+    async timeEfforts(from, to) { await delay(); return all().efforts.filter((t) => t.start.slice(0, 10) >= from && t.start.slice(0, 10) <= to); },
+    async saveActivity(w) {
+      await delay(150);
+      const { st, acts } = all();
+      const id = w.id ?? `DEMO-N${++st.n}`;
+      const old = acts.find((a) => a.id === id);
+      const now = `${today()}T08:00`;
+      st.activities[id] = old ? { ...old, subject: w.subject, remarks: w.remarks } : {
+        id, code: `A-NEU-${st.n}`, subject: w.subject, remarks: w.remarks, status: 'OPEN', start: now, end: `${today()}T17:00`,
+        serviceCall: { code: '', subject: '' }, customer: '', address: '', equipment: { serial: '', name: '' },
+      };
+      store.save(st);
+      return id;
+    },
+    async saveTimeEffort(w) {
+      await delay(150);
+      const { st } = all();
+      const id = w.id ?? `DEMO-T${++st.n}`;
+      st.efforts[id] = { ...w, id };
+      store.save(st);
+      return id;
+    },
     async sendReport() { await delay(700); return { ok: true, at: new Date().toISOString() }; },
   };
 }

@@ -7,7 +7,7 @@ import { db, useSettings } from '../db';
 import { formatDateDE, todayISO, uid } from '../lib/dates';
 import { compressImage, pickImages } from '../lib/images';
 import { downloadPptx } from '../lib/pptx';
-import { emptyReport, fileName, fsmText, missingFields, reportPages } from '../lib/report';
+import { customerHtml, emptyReport, fileName, fsmText, missingFields, reportPages } from '../lib/report';
 import { fillTemplate, placeholders } from '../lib/templates';
 import type { NumberedItem, ServiceReport } from '../lib/types';
 import { printReport, ReportPreview } from './ReportDoc';
@@ -186,7 +186,7 @@ function ReportEditor({ id }: { id: string }) {
         <button className="btn primary" onClick={exportPdf}>PDF</button>
         <button className="btn" onClick={exportPptx}>PowerPoint</button>
         <CopyButton text={text} label="FSM-Text kopieren" className="btn" />
-        <FsmSendButton r={r} text={text} onSent={(x) => setR(x)} />
+        <FsmSendButton r={r} text={text} html={() => customerHtml(r, branding)} onSent={(x) => setR(x)} />
       </>} />
       {r.fsm && <p className="muted small" style={{ marginTop: '-.6rem' }}>Verknüpft mit FSM-Einsatz <b>{r.fsm.code}</b>{r.fsm.sentAt ? ` · gesendet am ${new Date(r.fsm.sentAt).toLocaleString('de-DE')}` : ''}</p>}
       {busy && <p className="result warn">{busy}</p>}

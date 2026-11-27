@@ -392,7 +392,8 @@ describe('FSM-Anbindung (Demo + Abbildung)', () => {
     const te = effortToEntry(efforts[0], activities);
     expect(te.id.startsWith('fsm-')).toBe(true);
     expect(te.kind).toBe('reise');
-    expect(te.note).toMatch(/^FSM A-26/);
+    expect(te.fsm?.code).toMatch(/^A-26/);
+    expect(te.fsm?.activityId).toBe(efforts[0].activityId);
   });
   it('Demo-Zeiten ergeben plausible Tage (mit Lücke 12:00–12:45 als Pause)', () => {
     const entries = efforts.map((t) => effortToEntry(t, activities));

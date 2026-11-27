@@ -10,7 +10,7 @@
  *
  * Doku: help.sap.com → SAP Field Service Management → Mobile → Web Containers / JavaScript Bridge
  */
-import type { FsmActivity, FsmClient, FsmTimeEffort } from './fsm';
+import { toLocal, toUtc, type FsmActivity, type FsmClient, type FsmTask, type FsmTimeEffort } from './fsm';
 
 export interface FsmHost { postMessage(message: string): void }
 interface BridgeResponse { success: boolean; requestId: string; command: string; payload?: unknown; error?: { code: string; message: string } }
@@ -62,13 +62,13 @@ export const ACTIVITY_DTOS = 'Activity.43;ServiceCall.27;BusinessPartner.23;Equi
 export const EFFORT_DTOS = 'TimeEffort.16;TimeTask.18';
 
 export function activitiesQuery(personId: string, from: string, to: string) {
-  return `SELECT a.id, a.code, a.subject, a.status, a.startDateTime, a.endDateTime, sc.code, sc.subject, bp.name, e.serialNumber, e.name, ad.street, ad.zipCode, ad.city
+  return `SELECT a.id, a.code, a.subject, a.status, a.remarks, a.startDateTime, a.endDateTime, sc.code, sc.subject, bp.name, e.serialNumber, e.name, ad.street, ad.zipCode, ad.city
  FROM Activity a JOIN ServiceCall sc ON a.object.objectId = sc.id LEFT JOIN BusinessPartner bp ON sc.businessPartner = bp.id
  LEFT JOIN Equipment e ON a.equipment = e.id LEFT JOIN Address ad ON a.address = ad.id
  WHERE ${q(personId)} IN a.responsibles AND a.endDateTime >= ${q(from + 'T00:00:00Z')} AND a.startDateTime <= ${q(to + 'T23:59:59Z')}`;
 }
 export function effortsQuery(personId: string, from: string, to: string) {
-  return `SELECT te.id, te.startDateTime, te.endDateTime, te.object, tt.name FROM TimeEffort te LEFT JOIN TimeTask tt ON te.task = tt.id
+  return `SELECT te.id, te.startDateTime, te.endDateTime, te.breakInMinutes, te.remarks, te.object, tt.name FROM TimeEffort te LEFT JOIN TimeTask tt ON te.task = tt.id
  WHERE te.createPerson = ${q(personId)} AND te.startDateTime >= ${q(from + 'T00:00:00Z')} AND te.startDateTime <= ${q(to + 'T23:59:59Z')}`;
 }
 
@@ -79,18 +79,29 @@ export function rowToActivity(r: Row): FsmActivity {
   const a = r.a ?? {}, sc = r.sc ?? {}, ad = r.ad ?? {}, e = r.e ?? {};
   return {
     id: str(a.id), code: str(a.code), subject: str(a.subject), status: a.status === 'CLOSED' ? 'CLOSED' : 'OPEN',
-    start: str(a.startDateTime).slice(0, 16), end: str(a.endDateTime).slice(0, 16),
+    start: toLocal(str(a.startDateTime)), end: toLocal(str(a.endDateTime)), remarks: str(a.remarks),
     serviceCall: { code: str(sc.code), subject: str(sc.subject) }, customer: str(r.bp?.name),
     address: [str(ad.street), [str(ad.zipCode), str(ad.city)].filter(Boolean).join(' ')].filter(Boolean).join(', '),
     equipment: { serial: str(e.serialNumber), name: str(e.name) },
   };
 }
+export const taskOf = (name: string): FsmTask => (/reise|travel/i.test(name) ? 'Reisezeit' : /kunde|customer/i.test(name) ? 'Kundenbesuch' : 'Arbeitszeit');
+
+/** Text → Base64 (UTF-8) für Anhänge */
+export function base64Utf8(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 export function rowToEffort(r: Row): FsmTimeEffort {
   const te = r.te ?? {}, name = str(r.tt?.name);
   return {
     id: str(te.id), activityId: str((te.object as { objectId?: string } | undefined)?.objectId),
-    task: /reise|travel/i.test(name) ? 'Reisezeit' : /kunde|customer/i.test(name) ? 'Kundenbesuch' : 'Arbeitszeit',
-    start: str(te.startDateTime).slice(0, 16), end: str(te.endDateTime).slice(0, 16),
+    task: taskOf(name),
+    start: toLocal(str(te.startDateTime)), end: toLocal(str(te.endDateTime)),
+    breakMin: Number(te.breakInMinutes) || 0, remarks: str(te.remarks),
   };
 }
 
@@ -116,11 +127,40 @@ export function bridgeClient(bridge: FsmBridge, fetchFn: typeof fetch = (...a) =
     if (!res.ok) throw new Error(`FSM-Abfrage fehlgeschlagen (${res.status})`);
     return ((await res.json()) as { data?: T[] }).data ?? [];
   }
+  // Zeitarten (TimeTask) des Mandanten einmal lesen: Reisezeit / Kundenbesuch / Arbeitszeit → ID
+  let tasks: Promise<Partial<Record<FsmTask, string>>> | null = null;
+  const taskIds = () => (tasks ??= query<Row>(() => 'SELECT tt.id, tt.name FROM TimeTask tt', 'TimeTask.18').then((rows) => {
+    const m: Partial<Record<FsmTask, string>> = {};
+    for (const r of rows) { const t = taskOf(str(r.tt?.name)); m[t] ??= str(r.tt?.id); }
+    return m;
+  }).catch((): Partial<Record<FsmTask, string>> => ({})));
+  const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'Europe/Berlin'; } };
+  const save = async (command: string, payload: Record<string, unknown>) => (await bridge.request<{ id: string }>(command, payload)).id;
+
   return {
     mode: 'live',
     activities: async (from, to) => (await query<Row>((p) => activitiesQuery(p, from, to), ACTIVITY_DTOS)).map(rowToActivity),
     timeEfforts: async (from, to) => (await query<Row>((p) => effortsQuery(p, from, to), EFFORT_DTOS)).map(rowToEffort),
-    async sendReport() { throw new Error('Senden an FSM folgt in Phase 2 – nach Freigabe durch die IT. Bis dahin: Text kopieren und im FSM einfügen.'); },
+    // Termine, Verantwortliche und Status sind in FSM nicht von außen beschreibbar (Disposition / Abschluss in FSM)
+    saveActivity: (w) => save('ACTIVITY_SAVE', w.id ? { id: w.id, subject: w.subject, remarks: w.remarks ?? '' } : { subject: w.subject, type: 'ASSIGNMENT', remarks: w.remarks ?? '' }),
+    async saveTimeEffort(w) {
+      const task = (await taskIds())[w.task];
+      const zone = tz();
+      return save('TIME_EFFORT_SAVE', {
+        ...(w.id ? { id: w.id } : {}),
+        object: { objectId: w.activityId, objectType: 'ACTIVITY' },
+        startDateTime: toUtc(w.start), endDateTime: toUtc(w.end),
+        startDateTimeTimeZoneId: zone, endDateTimeTimeZoneId: zone,
+        breakInMinutes: w.breakMin ?? 0, remarks: w.remarks ?? '',
+        ...(task ? { task } : {}),
+      });
+    },
+    async sendReport(p) {
+      const name = (p.fileName || 'Service_Report').replace(/\.[a-z]+$/i, '');
+      if (p.html) await save('ATTACHMENT_ADD', { fileName: `${name}.html`, fileContent: base64Utf8(p.html), object: { objectId: p.activityId, objectType: 'ACTIVITY' }, title: 'Service Report' });
+      await save('ATTACHMENT_ADD', { fileName: `${name}_FSM.txt`, fileContent: base64Utf8(p.text), object: { objectId: p.activityId, objectType: 'ACTIVITY' }, title: 'Service Report (Text)' });
+      return { ok: true, at: new Date().toISOString() };
+    },
   };
 }
 

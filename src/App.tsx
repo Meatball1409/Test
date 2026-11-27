@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Logo } from './brand';
 import { BLOCKED_MSG, migrateDefaults, storageSelfTest } from './db';
 import { Icon, type IconName } from './icons';
-import { FsmDemoBanner } from './pages/FsmParts';
+import { FsmAutoSync, FsmDemoBanner } from './pages/FsmParts';
 import Home from './pages/Home';
 import CalendarPage from './pages/Calendar';
 import TimePage from './pages/Time';
@@ -71,6 +71,7 @@ export default function App() {
       </nav>
       <main className="main">
         <FsmDemoBanner />
+        <FsmAutoSync />
         {storageError && (storageError === BLOCKED_MSG ? (
           <div className="result bad" role="alert" style={{ marginBottom: '1rem' }}>
             <b>Speichern gerade nicht möglich – TechDesk ist noch in einem anderen Tab offen.</b><br />
