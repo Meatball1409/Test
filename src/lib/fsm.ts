@@ -23,15 +23,15 @@ export interface FsmActivity {
 export type FsmTask = 'Reisezeit' | 'Kundenbesuch' | 'Arbeitszeit';
 export interface FsmTimeEffort { id: string; activityId: string; task: FsmTask; start: string; end: string; breakMin?: number; remarks?: string }
 export interface FsmReportPayload { activityId: string; text: string; html?: string; fileName?: string }
-/** Schreibbare Felder eines Einsatzes (Termine plant die Disposition in FSM) */
-export interface FsmActivityWrite { id?: string; subject: string; remarks?: string }
+/** Schreibbare Felder eines bestehenden Einsatzes (anlegen und planen: Innendienst/Vorgesetzte in SAP) */
+export interface FsmActivityWrite { id: string; subject: string; remarks?: string }
 export type FsmEffortWrite = Omit<FsmTimeEffort, 'id'> & { id?: string };
 
 export interface FsmClient {
   mode: 'demo' | 'live';
   activities(from: string, to: string): Promise<FsmActivity[]>;
   timeEfforts(from: string, to: string): Promise<FsmTimeEffort[]>;
-  /** legt an (ohne id) oder ändert; liefert die FSM-ID */
+  /** ändert einen bestehenden Einsatz; liefert die FSM-ID */
   saveActivity(a: FsmActivityWrite): Promise<string>;
   saveTimeEffort(e: FsmEffortWrite): Promise<string>;
   sendReport(p: FsmReportPayload): Promise<{ ok: true; at: string }>;
@@ -81,9 +81,7 @@ export function entryToEffort(e: TimeEntry): FsmEffortWrite | null {
     start: `${e.date}T${e.start}`, end: `${endDate}T${e.end}`, breakMin: e.breakMin ?? 0, remarks: e.note ?? '',
   };
 }
-export const eventToActivity = (e: CalendarEvent): FsmActivityWrite => ({
-  id: e.id.startsWith('fsm-') ? e.id.slice(4) : undefined, subject: e.title, remarks: e.notes ?? '',
-});
+export const eventToActivity = (e: CalendarEvent): Omit<FsmActivityWrite, 'id'> => ({ subject: e.title, remarks: e.notes ?? '' });
 
 /* ---------- Demo ---------- */
 
@@ -150,21 +148,16 @@ export function demoClient(today: () => string, store: { load: () => DemoStore; 
   };
   return {
     mode: 'demo',
-    // Neu angelegte Einsätze tauchen (wie in FSM) erst nach der Disposition in der eigenen Liste auf
-    async activities(from, to) { await delay(); return all().acts.filter((a) => !a.id.startsWith('DEMO-N') && a.end.slice(0, 10) >= from && a.start.slice(0, 10) <= to); },
+    async activities(from, to) { await delay(); return all().acts.filter((a) => a.end.slice(0, 10) >= from && a.start.slice(0, 10) <= to); },
     async timeEfforts(from, to) { await delay(); return all().efforts.filter((t) => t.start.slice(0, 10) >= from && t.start.slice(0, 10) <= to); },
     async saveActivity(w) {
       await delay(150);
       const { st, acts } = all();
-      const id = w.id ?? `DEMO-N${++st.n}`;
-      const old = acts.find((a) => a.id === id);
-      const now = `${today()}T08:00`;
-      st.activities[id] = old ? { ...old, subject: w.subject, remarks: w.remarks } : {
-        id, code: `A-NEU-${st.n}`, subject: w.subject, remarks: w.remarks, status: 'OPEN', start: now, end: `${today()}T17:00`,
-        serviceCall: { code: '', subject: '' }, customer: '', address: '', equipment: { serial: '', name: '' },
-      };
+      const old = acts.find((a) => a.id === w.id);
+      if (!old) throw new Error('Einsatz nicht gefunden – Einsätze legt der Innendienst in SAP an');
+      st.activities[w.id] = { ...old, subject: w.subject, remarks: w.remarks };
       store.save(st);
-      return id;
+      return w.id;
     },
     async saveTimeEffort(w) {
       await delay(150);

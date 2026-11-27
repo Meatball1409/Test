@@ -17,8 +17,7 @@ async function cycle(local: { events: CalendarEvent[]; times: TimeEntry[] }, st:
     const id = op.kind === 'activity' ? await c.saveActivity(op.write) : await c.saveTimeEffort(op.write);
     const r = afterPush(op, id, state, NOW);
     state = r.state;
-    if (op.kind === 'activity') events = events.map((e) => (e.id === op.localId ? { ...e, id: r.newId, fsm: { ...e.fsm, push: undefined } } : e));
-    else times = times.map((t) => (t.id === op.localId ? { ...t, id: r.newId } : t));
+    if (op.kind === 'effort') times = times.map((t) => (t.id === op.localId ? { ...t, id: r.newId } : t));
   }
   const p = planPull({ events, times }, { activities: await c.activities(range.from, range.to), efforts: await c.timeEfforts(range.from, range.to) }, range, state, NOW);
   events = events.filter((e) => !p.delEvents.includes(e.id)); times = times.filter((t) => !p.delTimes.includes(t.id));
@@ -82,28 +81,29 @@ describe('FSM-Abgleich in beide Richtungen', () => {
     expect(planPush([], [base], {})).toEqual([]);
     expect(planPush([], [{ ...base, kind: 'urlaub', fsm: { activityId: 'A1' } }], {})).toEqual([]);
     expect(planPush([], [{ ...base, fsm: { activityId: 'A1' } }], {})).toHaveLength(1);
+    // lokale Einsätze werden nie in FSM angelegt
     expect(planPush([{ id: 'e', title: 'Einsatz', type: 'einsatz', startDate: '2026-11-30', endDate: '2026-11-30' }], [], {})).toEqual([]);
   });
 
-  it('Demo: Zeit und neuer Einsatz gehen an FSM und kommen beim nächsten Abgleich unverändert zurück', async () => {
+  it('Demo: Zeit und Notiz gehen an FSM und kommen beim nächsten Abgleich unverändert zurück', async () => {
     const store = memStore();
     const c = demoClient(() => '2026-11-27', store);
-    const r1 = await cycle({
-      events: [{ id: 'loc-1', title: 'Nachrüstung Etikettierer', type: 'einsatz', startDate: '2026-12-02', endDate: '2026-12-02', notes: 'mit Kollege', fsm: { push: true } }],
-      times: [{ id: 'loc-t', date: '2026-11-26', kind: 'kunde', start: '08:00', end: '15:00', breakMin: 30, note: 'Abnahme', fsm: { activityId: 'DEMO003' } }],
-    }, {}, c);
+    const r0 = await cycle(empty, {}, c);
+    const ev = r0.events.find((e) => e.id === 'fsm-DEMO003')!;
+    const local = { events: [...r0.events.filter((e) => e !== ev), { ...ev, notes: 'Siegelrahmen bestellt' }, { id: 'loc-1', title: 'Eigener Termin', type: 'einsatz' as const, startDate: '2026-12-02', endDate: '2026-12-02' }],
+      times: [...r0.times, { id: 'loc-t', date: '2026-11-26', kind: 'kunde' as const, start: '08:00', end: '15:00', breakMin: 30, note: 'Abnahme', fsm: { activityId: 'DEMO003' } }] };
+    const r1 = await cycle(local, r0.state, c);
     expect(Object.keys(store.get().efforts)).toHaveLength(1);
-    expect(Object.values(store.get().activities)[0]).toMatchObject({ subject: 'Nachrüstung Etikettierer', remarks: 'mit Kollege' });
+    expect(store.get().activities.DEMO003.remarks).toBe('Siegelrahmen bestellt');
+    expect(Object.keys(store.get().activities)).toEqual(['DEMO003']); // kein neuer Einsatz in FSM
     const t = r1.times.find((x) => x.note === 'Abnahme')!;
     expect(t.id).toMatch(/^fsm-DEMO-T/);
     expect(t).toMatchObject({ start: '08:00', end: '15:00', breakMin: 30, kind: 'kunde', customer: 'Alpen Käse AG' });
-    expect(r1.events.some((e) => e.id.startsWith('fsm-DEMO-N') && e.title === 'Nachrüstung Etikettierer')).toBe(true);
-    expect(r1.events.some((e) => e.id === 'loc-1')).toBe(false);
-    // zweiter Durchlauf: nichts mehr zu senden, nichts doppelt
+    expect(r1.events.find((e) => e.id === 'loc-1')).toBeTruthy(); // eigener Termin bleibt lokal
     expect(planPush(r1.events, r1.times, r1.state)).toEqual([]);
     const r2 = await cycle(r1, r1.state, c);
     expect(r2.times.filter((x) => x.note === 'Abnahme')).toHaveLength(1);
     expect(hashTime(r2.times.find((x) => x.note === 'Abnahme')!)).toBe(hashTime(t));
-    expect(hashEvent(r2.events.find((e) => e.title === 'Nachrüstung Etikettierer')!)).toBeTruthy();
+    expect(hashEvent(r2.events.find((e) => e.id === 'fsm-DEMO003')!)).toBe(hashEvent({ ...ev, notes: 'Siegelrahmen bestellt' }));
   });
 });

@@ -26,7 +26,6 @@ async function run(s: Settings): Promise<FsmSyncResult> {
   if (!c) throw new Error(s.fsmMode === 'live' ? 'Live-Abgleich geht nur, wenn TechDesk in der SAP-FSM-App geöffnet ist' : 'FSM ist nicht verbunden');
   const from = addDays(todayISO(), -30), to = addDays(todayISO(), 60);
   let state = (await getMeta<SyncState>('fsm-sync')) ?? {};
-  const cached = (await getMeta<FsmActivity[]>('fsm-activities')) ?? [];
 
   // 1. Senden
   const failed: string[] = [];
@@ -37,18 +36,10 @@ async function run(s: Settings): Promise<FsmSyncResult> {
       const remoteId = op.kind === 'activity' ? await c.saveActivity(op.write) : await c.saveTimeEffort(op.write);
       const r = afterPush(op, remoteId, state, new Date().toISOString());
       state = r.state;
-      await db.transaction('rw', [db.events, db.times, db.meta], async () => {
-        const tbl = op.kind === 'activity' ? db.events : db.times;
-        const cur = await tbl.get(op.localId);
-        if (cur && r.newId !== op.localId) {
-          await tbl.delete(op.localId);
-          const moved = op.kind === 'activity' ? { ...cur, id: r.newId, fsm: { ...(cur as { fsm?: object }).fsm, push: undefined, code: (cur as { fsm?: { code?: string } }).fsm?.code } } : { ...cur, id: r.newId };
-          await tbl.put(moved as never);
-          if (op.kind === 'activity') {
-            const e = moved as Parameters<typeof db.events.put>[0];
-            cached.push({ id: remoteId, code: e.fsm?.code ?? 'neu', subject: e.title, status: 'OPEN', start: `${e.startDate}T${e.startTime ?? '08:00'}`, end: `${e.endDate}T${e.endTime ?? '17:00'}`, serviceCall: { code: '', subject: '' }, customer: e.customer ?? '', address: e.location ?? '', equipment: { serial: e.machine ?? '', name: '' }, remarks: e.notes });
-          }
-        }
+      await db.transaction('rw', [db.times, db.meta], async () => {
+        // neue Zeitbuchung: lokalen Eintrag auf die FSM-ID umschlüsseln
+        const cur = op.kind === 'effort' && r.newId !== op.localId ? await db.times.get(op.localId) : undefined;
+        if (cur) { await db.times.delete(op.localId); await db.times.put({ ...cur, id: r.newId }); }
         await db.meta.put({ key: 'fsm-sync', value: state });
       });
       pushed++;
@@ -64,11 +55,8 @@ async function run(s: Settings): Promise<FsmSyncResult> {
     const p = planPull({ events: await db.events.toArray(), times: await db.times.toArray() }, { activities: acts, efforts }, { from, to }, state, new Date().toISOString());
     await db.events.bulkDelete(p.delEvents); await db.events.bulkPut(p.putEvents);
     await db.times.bulkDelete(p.delTimes); await db.times.bulkPut(p.putTimes);
-    // Auswahlliste: gelesene Einsätze plus selbst angelegte, die FSM noch nicht zurückmeldet
-    const ids = new Set(acts.map((a) => a.id));
-    const own = cached.filter((a) => !ids.has(a.id) && p.state[`fsm-${a.id}`]?.seen === false);
     await db.meta.put({ key: 'fsm-sync', value: p.state });
-    await db.meta.put({ key: 'fsm-activities', value: [...acts, ...own] });
+    await db.meta.put({ key: 'fsm-activities', value: acts });
     await db.meta.put({ key: 'fsm-last-sync', value: new Date().toISOString() });
   });
   return { pushed, failed, activities: acts.length, efforts: efforts.length, at: new Date().toISOString() };
