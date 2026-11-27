@@ -45,17 +45,16 @@ Mit aktivierter **JavaScript Bridge** stellt die FSM-App der Web-App den Kontext
 | Hosting | TechDesk als **statische Dateien** (HTML/JS/CSS, ohne Server-Logik) auf einem Firmen-Webserver bzw. einer von der IT gewählten Ablage mit HTTPS. Für den Pilot reicht die vorhandene Test-Adresse. |
 | Web Container | Admin → Company → Web Containers: Name „TechDesk“, URL, Objekttyp (z. B. Activity/Person), **JavaScript Bridge enabled** |
 | Authentication Key (optional) | Wird im Web Container gesetzt und beim Build als `VITE_FSM_BRIDGE_KEY` eingetragen |
-| Rechte der Techniker | Lesen: Activity, ServiceCall, BusinessPartner (Name), Address, Equipment, Person, TimeEffort, TimeTask (meist schon vorhanden) |
+| Rechte der Techniker | Lesen: Activity, ServiceCall, BusinessPartner (Name), Address, Equipment, Person, TimeEffort, TimeTask. Schreiben: TimeEffort (anlegen/ändern), Activity (Betreff/Bemerkung, ggf. anlegen), Attachment (anlegen) – meist schon für die FSM-App vorhanden |
 | Voraussetzung | FSM-Mobile-App ab Release 26.10.0 (JavaScript Bridge) |
 | Test | Test-/Sandbox-Mandant, falls vorhanden |
 
 **Im Pilot zu prüfen:** dass die Query API Aufrufe aus dem Web Container zulässt (CORS) und die
 Feldnamen/DTO-Versionen des Mandanten (`src/lib/fsmBridge.ts`, Abfragen `activitiesQuery`/`effortsQuery`).
 
-## Phase 2 (optional, nur nach Freigabe)
-Bericht zurück an den Einsatz – ebenfalls über die Bridge, ohne Server
-(`ATTACHMENT_ADD` am Activity bzw. `TIME_EFFORT_SAVE`). Bis dahin wird der Berichtstext kopiert und
-in FSM eingefügt.
+**Mit der IT abzustimmen:** ob Zeitbuchungen die Firmenpause (45 min ab 8 h) als `breakInMinutes`
+enthalten sollen (derzeit wird die eingetragene Pause übertragen) und ob neue Einsätze aus TechDesk
+angelegt werden dürfen.
 
 ## Außerhalb von FSM (PC-Browser)
 TechDesk funktioniert weiter ohne FSM und ohne Anmeldung: alle Daten lokal auf dem Gerät,

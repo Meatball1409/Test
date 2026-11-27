@@ -345,3 +345,8 @@ a.tag:hover { text-decoration: underline; }
 .sap-tag.fsm { background: var(--accent); }
 .grid2 > *, .split > *, .cards > * { min-width: 0; }
 .card-head h2 { min-width: 0; overflow-wrap: anywhere; }
+
+/* FSM-Abgleich */
+.fsm-note { margin: 0 0 .9rem; padding: .7rem .85rem; border-radius: 12px; background: var(--accent-soft); font-size: .9rem; line-height: 1.45; }
+.fsm-note small { color: var(--muted); }
+.fsm-rules { margin: .2rem 0 .6rem; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .3rem; }

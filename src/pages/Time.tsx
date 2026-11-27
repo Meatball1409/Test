@@ -7,7 +7,7 @@ import { addDays, endOfMonth, parseHours, formatDateDE, formatMinutes, MONTHS, s
 import { isDomestic } from '../lib/visa';
 import { printZeitnachweis } from './Zeitnachweis';
 import { SapImportDialog } from './SapImport';
-import { FsmSyncButton } from './FsmParts';
+import { FsmSyncButton, useFsmActivities } from './FsmParts';
 import { balanceDate, breakLabel, creditedMinutes, dayWork, effectiveBreak, fmtHours, glzAccount, overtimeBalance, setBalanceAt, summarizeRange, vacationSummary, weeklySums, withCalendarVacation } from '../lib/time';
 import { TIME_KINDS, type TimeEntry, type TimeKind } from '../lib/types';
 
@@ -95,7 +95,7 @@ export default function TimePage() {
   return (
     <>
       <PageHeader title="Zeiterfassung" actions={<>
-        <FsmSyncButton what={{ calendar: true, times: true }} label="Zeiten aus FSM" />
+        <FsmSyncButton label="FSM abgleichen" />
         <button className="btn" onClick={() => setImportOpen(true)}>SAP-Zeitnachweis importieren</button>
         <button className="btn" onClick={exportPdf}>Zeitnachweis (PDF)</button>
         <button className="btn" onClick={exportCsv}>CSV</button>
@@ -135,7 +135,7 @@ export default function TimePage() {
                   <td>
                     {es.map((e) => (
                       <button key={e.id} className={'entry k-' + e.kind} onClick={() => (e.id.startsWith('cal-') ? navigate('kalender', e.date) : setEdit(e))}>
-                        {e.id.startsWith('sap-') && <span className="sap-tag">SAP</span>}{e.id.startsWith('fsm-') && <span className="sap-tag fsm">FSM</span>}{TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.customer ? ` · ${e.customer}` : ''}
+                        {e.id.startsWith('sap-') && <span className="sap-tag">SAP</span>}{(e.id.startsWith('fsm-') || e.fsm) && <span className="sap-tag fsm">FSM</span>}{TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.customer ? ` · ${e.customer}` : ''}
                       </button>
                     ))}
                     <button className="entry add" onClick={() => setEdit(newEntry(d.date))} aria-label={`Abschnitt am ${formatDateDE(d.date)} hinzufügen`}>+</button>
@@ -197,6 +197,8 @@ export default function TimePage() {
 
 function EntryEditor({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) {
   const s = useSettings();
+  const acts = useFsmActivities();
+  const fromFsm = entry.id.startsWith('fsm-');
   const [e, setE] = useState(entry);
   const [until, setUntil] = useState(entry.date);
   const exists = useLiveQuery(() => db.times.get(entry.id), [entry.id]);
@@ -216,7 +218,7 @@ function EntryEditor({ entry, onClose }: { entry: TimeEntry; onClose: () => void
   }
   return (
     <Modal title={exists ? 'Eintrag bearbeiten' : 'Neuer Eintrag'} onClose={onClose} footer={<>
-      {exists && <button className="btn danger" onClick={async () => { await db.times.delete(e.id); onClose(); }}>Löschen</button>}
+      {exists && !fromFsm && <button className="btn danger" onClick={async () => { await db.times.delete(e.id); onClose(); }}>Löschen</button>}
       <span className="spacer" />
       <button className="btn" onClick={onClose}>Abbrechen</button>
       <button className="btn primary" onClick={save}>Speichern</button>
@@ -234,6 +236,17 @@ function EntryEditor({ entry, onClose }: { entry: TimeEntry; onClose: () => void
           <Field label="Abschnitt"><output>{fmtHours(creditedMinutes({ ...e, breakMin: 0, kind: e.kind === 'kunde' ? 'arbeit' : e.kind }, { ...s, breakMode: 'manuell' }), s)} Std.</output></Field>
           <Field label="Tag gesamt" hint={dayInfo.breakDeducted ? `inkl. Pause ${s.breakMode === 'firma' ? breakLabel({ ...e, kind: 'arbeit', start: '00:00', end: '23:59' }, s).replace('Pause ', '') : dayInfo.breakDeducted + ' min'} abgezogen` : dayInfo.gaps ? `Lücke ${dayInfo.gaps} min = Pause` : undefined}><output>{fmtHours(dayInfo.worked, s)} Std.</output></Field>
         </>}
+        {s.fsmMode !== 'aus' && ['arbeit', 'kunde', 'reise'].includes(e.kind) && (() => {
+          const options = acts.filter((a) => (a.start.slice(0, 10) <= e.date && (a.end || a.start).slice(0, 10) >= e.date) || a.id === e.fsm?.activityId);
+          return <Field label="FSM-Einsatz" wide hint={fromFsm ? 'Zeitbuchung aus FSM – Änderungen gehen beim Abgleich zurück an FSM. Löschen bitte in FSM.' : e.fsm ? 'Wird beim nächsten Abgleich als Zeitbuchung an FSM übertragen.' : options.length ? 'Zuordnen, damit die Zeit an FSM übertragen wird.' : 'Kein FSM-Einsatz an diesem Tag.'}>
+            <select value={e.fsm?.activityId ?? ''} onChange={(x) => {
+              const a = acts.find((y) => y.id === x.target.value);
+              setE((y) => ({ ...y, fsm: a ? { activityId: a.id, code: a.code } : undefined, customer: y.customer || a?.customer }));
+            }}>
+              {!fromFsm && <option value="">– nicht an FSM übertragen –</option>}
+              {options.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.customer || a.subject}</option>)}
+            </select></Field>;
+        })()}
         <Field label="Kunde / Auftrag"><input value={e.customer ?? ''} onChange={(x) => set('customer', x.target.value)} /></Field>
         <Field label="Notiz" wide><input value={e.note ?? ''} onChange={(x) => set('note', x.target.value)} /></Field>
       </div>

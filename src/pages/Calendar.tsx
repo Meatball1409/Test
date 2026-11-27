@@ -58,7 +58,7 @@ export default function CalendarPage() {
   return (
     <>
       <PageHeader title="Kalender" actions={<>
-        <FsmSyncButton what={{ calendar: true, times: false }} label="FSM-Einsätze" />
+        <FsmSyncButton label="FSM abgleichen" />
         <button className="btn" onClick={importIcs}>Import .ics</button>
         <button className="btn" onClick={exportIcs}>Export .ics</button>
         <button className="btn primary" onClick={() => setEdit(newEvent(selected))}>+ Termin</button>
@@ -126,7 +126,7 @@ export default function CalendarPage() {
           <ul className="list">{on(selected).map((e) => (
             <li key={e.id} onClick={() => setEdit(e)}>
               <span className="dot" style={{ background: EVENT_TYPES[e.type].color }} />
-              <div><b>{e.title}</b><small>{EVENT_TYPES[e.type].label}{e.startTime ? ` · ${e.startTime}–${e.endTime ?? ''}` : ' · ganztägig'}{e.customer ? ` · ${e.customer}` : ''}{e.location ? ` · ${e.location}` : ''}</small></div>
+              <div><b>{e.id.startsWith('fsm-') && <span className="sap-tag fsm">FSM</span>}{e.title}</b><small>{e.fsm?.code ? `${e.fsm.code} · ` : ''}{EVENT_TYPES[e.type].label}{e.startTime ? ` · ${e.startTime}–${e.endTime ?? ''}` : ' · ganztägig'}{e.customer ? ` · ${e.customer}` : ''}{e.location ? ` · ${e.location}` : ''}</small></div>
             </li>))}</ul>
         )}
         <p className="legend">{Object.values(EVENT_TYPES).map((t) => <span key={t.label}><i style={{ background: t.color }} />{t.label}</span>)}</p>
@@ -159,6 +159,8 @@ export default function CalendarPage() {
 }
 
 function EventEditor({ ev, onClose }: { ev: CalendarEvent; onClose: () => void }) {
+  const st = useSettings();
+  const fromFsm = ev.id.startsWith('fsm-');
   const [e, setE] = useState(ev);
   const [allDay, setAllDay] = useState(!ev.startTime);
   const set = <K extends keyof CalendarEvent>(k: K, v: CalendarEvent[K]) => setE((x) => ({ ...x, [k]: v }));
@@ -176,28 +178,31 @@ function EventEditor({ ev, onClose }: { ev: CalendarEvent; onClose: () => void }
   }
   return (
     <Modal title={exists ? 'Termin bearbeiten' : 'Neuer Termin'} onClose={onClose} footer={<>
-      {exists && <button className="btn danger" onClick={remove}>Löschen</button>}
+      {exists && !fromFsm && <button className="btn danger" onClick={remove}>Löschen</button>}
       {e.type === 'einsatz' && <button className="btn" onClick={toReport}>→ Bericht anlegen</button>}
       <span className="spacer" />
       <button className="btn" onClick={onClose}>Abbrechen</button>
       <button className="btn primary" onClick={save}>Speichern</button>
     </>}>
+      {fromFsm && <p className="fsm-note"><span className="sap-tag fsm">FSM</span> Einsatz {e.fsm?.code}{e.fsm?.serviceCall ? ` · Serviceauftrag ${e.fsm.serviceCall}` : ''}{e.fsm?.equipment ? ` · ${e.fsm.equipment}` : ''}<br /><small>Titel und Notizen gehen beim Abgleich an FSM. Termin, Kunde und Ort plant die Disposition in FSM; abgeschlossen wird der Auftrag in FSM.</small></p>}
       <div className="form">
         <Field label="Titel" wide><input autoFocus value={e.title} onChange={(x) => set('title', x.target.value)} placeholder="z. B. Wartung Tiefziehmaschine" /></Field>
-        <Field label="Typ"><select value={e.type} onChange={(x) => set('type', x.target.value as EventType)}>
+        <Field label="Typ"><select disabled={fromFsm} value={e.type} onChange={(x) => set('type', x.target.value as EventType)}>
           {Object.entries(EVENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
-        <Field label="Ganztägig"><input type="checkbox" checked={allDay} onChange={(x) => { setAllDay(x.target.checked); if (!x.target.checked && !e.startTime) setE((y) => ({ ...y, startTime: '08:00', endTime: '16:30' })); }} /></Field>
-        <Field label="Von"><input type="date" value={e.startDate} onChange={(x) => set('startDate', x.target.value)} /></Field>
-        <Field label="Bis"><input type="date" value={e.endDate} min={e.startDate} onChange={(x) => set('endDate', x.target.value)} /></Field>
+        <Field label="Ganztägig"><input disabled={fromFsm} type="checkbox" checked={allDay} onChange={(x) => { setAllDay(x.target.checked); if (!x.target.checked && !e.startTime) setE((y) => ({ ...y, startTime: '08:00', endTime: '16:30' })); }} /></Field>
+        <Field label="Von"><input disabled={fromFsm} type="date" value={e.startDate} onChange={(x) => set('startDate', x.target.value)} /></Field>
+        <Field label="Bis"><input disabled={fromFsm} type="date" value={e.endDate} min={e.startDate} onChange={(x) => set('endDate', x.target.value)} /></Field>
         {!allDay && <>
-          <Field label="Beginn"><input type="time" value={e.startTime ?? ''} onChange={(x) => set('startTime', x.target.value)} /></Field>
-          <Field label="Ende"><input type="time" value={e.endTime ?? ''} onChange={(x) => set('endTime', x.target.value)} /></Field>
+          <Field label="Beginn"><input disabled={fromFsm} type="time" value={e.startTime ?? ''} onChange={(x) => set('startTime', x.target.value)} /></Field>
+          <Field label="Ende"><input disabled={fromFsm} type="time" value={e.endTime ?? ''} onChange={(x) => set('endTime', x.target.value)} /></Field>
         </>}
-        <Field label="Kunde"><input value={e.customer ?? ''} onChange={(x) => set('customer', x.target.value)} /></Field>
-        <Field label="Maschine / Nr."><input value={e.machine ?? ''} onChange={(x) => set('machine', x.target.value)} /></Field>
-        <Field label="Ort / Adresse" wide><input value={e.location ?? ''} onChange={(x) => set('location', x.target.value)} />
+        <Field label="Kunde"><input disabled={fromFsm} value={e.customer ?? ''} onChange={(x) => set('customer', x.target.value)} /></Field>
+        <Field label="Maschine / Nr."><input disabled={fromFsm} value={e.machine ?? ''} onChange={(x) => set('machine', x.target.value)} /></Field>
+        <Field label="Ort / Adresse" wide><input disabled={fromFsm} value={e.location ?? ''} onChange={(x) => set('location', x.target.value)} />
           {e.location && <a className="link" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location)}`} target="_blank" rel="noreferrer">In Karten öffnen ↗</a>}</Field>
         <Field label="Notizen" wide><textarea rows={3} value={e.notes ?? ''} onChange={(x) => set('notes', x.target.value)} /></Field>
+        {!fromFsm && e.type === 'einsatz' && st.fsmMode !== 'aus' && <Field label="SAP FSM" wide hint="Legt beim nächsten Abgleich einen Einsatz in FSM an (Titel und Notizen). Die Terminplanung übernimmt die Disposition in FSM.">
+          <label className="check"><input type="checkbox" checked={!!e.fsm?.push} onChange={(x) => set('fsm', { ...e.fsm, push: x.target.checked || undefined })} /> In FSM anlegen</label></Field>}
       </div>
     </Modal>
   );

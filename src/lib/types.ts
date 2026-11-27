@@ -25,6 +25,8 @@ export interface CalendarEvent {
   machine?: string;
   notes?: string;
   tripId?: string;
+  /** SAP FSM: Herkunft bzw. „beim Abgleich in FSM anlegen“ */
+  fsm?: { code?: string; serviceCall?: string; equipment?: string; push?: boolean };
 }
 
 export type TimeKind = 'arbeit' | 'kunde' | 'reise' | 'bereitschaft' | 'urlaub' | 'krank' | 'gleittag';
@@ -47,6 +49,8 @@ export interface TimeEntry {
   breakMin?: number;
   customer?: string;
   note?: string;
+  /** SAP FSM: Zeitbuchung gehört zu diesem Einsatz (wird beim Abgleich übertragen) */
+  fsm?: { activityId: string; code?: string };
 }
 
 export interface Settings {
