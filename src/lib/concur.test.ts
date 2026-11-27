@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { applyOp, ConcurLoginError, demoConcur, gatewayClient, planPull, planTripPush, type ConcurDemoStore } from './concur';
 import type { Trip } from './types';
+import { bytesToBase64 } from './pdf';
+import { fakeJpeg } from './testUtils';
+
+const scan = 'data:image/jpeg;base64,' + bytesToBase64(fakeJpeg(600, 900));
 
 const trip = (p: Partial<Trip> = {}): Trip => ({
   id: 't1', title: 'Wartung Kempten', customer: 'Musterfood', destination: 'Kempten', country: 'DE',
   departure: '2026-11-23T06:00', return: '2026-11-24T19:00', transport: 'auto', km: 320,
   breakfasts: 0, lunches: 0, dinners: 0, checklist: [],
-  expenses: [{ id: 'e1', date: '2026-11-23', category: 'Hotel', amount: 119, note: '1 Nacht', receipt: 'data:image/jpeg;base64,QUJD' }, { id: 'e0', date: '2026-11-23', category: 'Parken', amount: 0 }],
+  expenses: [{ id: 'e1', date: '2026-11-23', category: 'Hotel', amount: 119, note: '1 Nacht', receiptPages: [scan, scan] }, { id: 'e0', date: '2026-11-23', category: 'Parken', amount: 0 }],
   ...p,
 });
 function mem() { let st: ConcurDemoStore = { reports: {}, n: 0 }; return { load: () => structuredClone(st), save: (s: ConcurDemoStore) => { st = structuredClone(s); } }; }
@@ -16,7 +20,10 @@ describe('SAP Concur ⇄ TechDesk', () => {
     const ops = planTripPush(trip());
     expect(ops.map((o) => o.kind)).toEqual(['report', 'expense', 'mileage']);
     expect(ops[0].write).toMatchObject({ name: 'Wartung Kempten', start: '2026-11-23', end: '2026-11-24' });
-    expect(ops[1].write).toMatchObject({ type: 'Hotel', amount: 119, currency: 'EUR', receipt: 'QUJD', comment: '1 Nacht · Kunde: Musterfood' });
+    expect(ops[1].write).toMatchObject({ type: 'Hotel', amount: 119, currency: 'EUR', receiptType: 'application/pdf', comment: '1 Nacht · Kunde: Musterfood' });
+    const pdf = atob((ops[1].write as { receipt: string }).receipt);
+    expect(pdf.startsWith('%PDF')).toBe(true);
+    expect(pdf).toContain('/Count 2'); // beide gescannten Seiten in einer PDF
     expect(ops[2].write).toMatchObject({ km: 320, date: '2026-11-23' });
   });
 

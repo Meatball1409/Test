@@ -6,13 +6,14 @@
  * und stellt dort eine kleine Schnittstelle bereit („Concur-Gateway“). TechDesk ruft sie mit dem Firmen-Login des
  * Technikers auf; die Plattform greift nur auf dessen eigene Concur-Daten zu. Vertrag: docs/CONCUR_INTEGRATION.md
  *
- * Richtung TechDesk → Concur: Reise als Spesenabrechnung (Report), Belege mit Foto, Kilometer (Privat-PKW).
+ * Richtung TechDesk → Concur: Reise als Spesenabrechnung (Report), gescannte Belege als PDF, Kilometer (Privat-PKW).
  * Richtung Concur → TechDesk: Status/Betrag der Abrechnung, in Concur gebuchte Reisen (Flug, Hotel, Mietwagen).
  * Verpflegungspauschalen berechnet Concur selbst nach Firmenrichtlinie – TechDesk sendet sie nicht.
  */
 import { DEFAULT_CHECKLIST } from './travel';
 import type { CalendarEvent, ConcurStatus, Expense, Trip } from './types';
 import { uid } from './dates';
+import { bytesToBase64, receiptPdf } from './pdf';
 
 export interface ConcurReport { id: string; name: string; status: ConcurStatus; total: number; currency: string }
 export interface ConcurItinerary {
@@ -24,7 +25,7 @@ export interface ConcurItinerary {
   reportId?: string; // falls die Abrechnung in Concur schon mit der Reise verknüpft ist
 }
 export interface ConcurNewReport { name: string; start: string; end: string; comment: string }
-export interface ConcurExpenseWrite { id?: string; reportId: string; date: string; type: string; amount: number; currency: string; comment: string; receipt?: string /* Base64 JPEG */ }
+export interface ConcurExpenseWrite { id?: string; reportId: string; date: string; type: string; amount: number; currency: string; comment: string; receipt?: string /* Base64 */; receiptType?: 'application/pdf' }
 export interface ConcurMileageWrite { id?: string; reportId: string; date: string; km: number; comment: string }
 
 export interface ConcurClient {
@@ -42,12 +43,18 @@ export class ConcurLoginError extends Error {
 
 /* ---------- Abgleich-Regeln (rein) ---------- */
 
-/** Kurzer Fingerabdruck – das Foto selbst wird nicht verglichen, nur ob/welches */
-const fp = (s?: string) => (s ? `${s.length}:${s.slice(-24)}` : '');
-export const hashExpense = (e: Expense) => JSON.stringify([e.date, e.category, Number(e.amount) || 0, e.note ?? '', fp(e.receipt)]);
+/** Belegseiten einer Ausgabe (Scan oder älteres Einzelfoto) */
+export const pagesOf = (e: Expense): string[] => e.receiptPages?.length ? e.receiptPages : e.receipt ? [e.receipt] : [];
+/** Kurzer Fingerabdruck – die Bilder selbst werden nicht verglichen, nur ob/welche */
+const fp = (pages: string[]) => pages.map((s) => `${s.length}:${s.slice(-24)}`).join('|');
+export const hashExpense = (e: Expense) => JSON.stringify([e.date, e.category, Number(e.amount) || 0, e.note ?? '', fp(pagesOf(e))]);
+/** Beleg als PDF (Base64) für Concur */
+export function receiptPdfBase64(e: Expense): string | undefined {
+  const pages = pagesOf(e);
+  return pages.length ? bytesToBase64(receiptPdf(pages, `Beleg ${e.date} ${e.category}`)) : undefined;
+}
 export const hashMileage = (t: Trip) => JSON.stringify([t.km, t.departure.slice(0, 10)]);
 export const editable = (t: Trip) => !t.concur?.status || t.concur.status === 'Entwurf' || t.concur.status === 'Zurückgewiesen';
-export const stripDataUrl = (d?: string) => (d ? d.replace(/^data:[^,]*,/, '') : undefined);
 
 export type ConcurOp =
   | { kind: 'report'; write: ConcurNewReport }
@@ -63,7 +70,7 @@ export function planTripPush(t: Trip): ConcurOp[] {
     if (!(Number(e.amount) > 0)) continue;
     const h = hashExpense(e);
     if (e.concur?.hash === h) continue;
-    ops.push({ kind: 'expense', expenseId: e.id, hash: h, write: { id: e.concur?.id, date: e.date, type: e.category, amount: Number(e.amount), currency: 'EUR', comment: [e.note, t.customer && `Kunde: ${t.customer}`].filter(Boolean).join(' · '), receipt: stripDataUrl(e.receipt) } });
+    ops.push({ kind: 'expense', expenseId: e.id, hash: h, write: { id: e.concur?.id, date: e.date, type: e.category, amount: Number(e.amount), currency: 'EUR', comment: [e.note, t.customer && `Kunde: ${t.customer}`].filter(Boolean).join(' · '), ...(pagesOf(e).length ? { receipt: receiptPdfBase64(e), receiptType: 'application/pdf' as const } : {}) } });
   }
   if (t.transport === 'auto' && t.km > 0) {
     const h = hashMileage(t);

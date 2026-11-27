@@ -22,7 +22,7 @@ Techniker ──Firmen-Login (SSO)──▶ Concur-Gateway der IT ──Company-
 |---|---|
 | Concur → TechDesk | in Concur gebuchte Reisen (Flug, Bahn, Hotel, Mietwagen) → Reise + Kalender |
 | Concur → TechDesk | Status und Betrag der eigenen Abrechnungen (Entwurf, eingereicht, genehmigt, bezahlt, zurückgewiesen) |
-| TechDesk → Concur | Reise als Abrechnung (Entwurf), Belege mit Foto, Kilometer mit Privat-PKW |
+| TechDesk → Concur | Reise als Abrechnung (Entwurf), gescannte Belege als PDF, Kilometer mit Privat-PKW |
 | bleibt in Concur | Einreichen, Genehmigung, Verpflegungspauschalen, Auszahlung |
 
 Eingereichte oder genehmigte Abrechnungen ändert TechDesk nicht mehr.
@@ -37,7 +37,7 @@ Bei fehlender Anmeldung: `401`, Anmeldeseite unter `{basis}/login`.
 | GET | `/me/reports` | – | `[{ id, name, status, total, currency }]`, Status: `Entwurf`, `Eingereicht`, `Genehmigt`, `Bezahlt`, `Zurückgewiesen` |
 | GET | `/me/itineraries?from=YYYY-MM-DD&to=YYYY-MM-DD` | – | `[{ id, name, start, end, destination, country, transport, hotel?, bookingRefs?, reportId? }]` (Zeiten lokal `YYYY-MM-DDTHH:MM`, transport `flug`/`bahn`/`auto`/`firmenwagen`) |
 | POST | `/me/reports` | `{ name, start, end, comment }` | `{ id }` |
-| POST / PUT | `/me/reports/{reportId}/expenses[/{id}]` | `{ date, type, amount, currency, comment, receipt? }` (receipt = Base64-JPEG) | `{ id }` |
+| POST / PUT | `/me/reports/{reportId}/expenses[/{id}]` | `{ date, type, amount, currency, comment, receipt?, receiptType? }` (receipt = Base64-PDF, `receiptType: application/pdf`, max. ca. 5 MB) | `{ id }` |
 | POST / PUT | `/me/reports/{reportId}/mileage[/{id}]` | `{ date, km, comment }` | `{ id }` |
 
 Abbildung im Gateway (Concur): Reports → Expense Reports v4, Belege → Expenses v4 + Receipts v4
@@ -51,7 +51,12 @@ Gateway unter derselben Firmen-Adresse (gleiche Anmeldung, kein CORS). Dann in T
 
 ## Datenschutz
 - Nur eigene Reisen und Abrechnungen des angemeldeten Technikers.
-- TechDesk speichert keine Concur-Zugangsdaten; Belegfotos liegen bis zum Senden nur auf dem Gerät.
+- TechDesk speichert keine Concur-Zugangsdaten; Belegscans liegen bis zum Senden nur auf dem Gerät.
+
+## Belegscanner (in TechDesk)
+Foto aufnehmen → Belegkanten werden automatisch erkannt (Ecken verschiebbar) → Perspektive wird entzerrt →
+Scan-Filter (Dokument/Graustufen/Farbe) → mehrere Seiten → eine PDF (A4). Alles auf dem Gerät, ohne Server.
+Die PDF kann vor dem Senden angesehen werden; an Concur geht die PDF als Beleg der Ausgabe.
 - Abschalten jederzeit durch die IT (Gateway sperren).
 
 ## Demo

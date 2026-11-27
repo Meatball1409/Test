@@ -9,8 +9,8 @@ import type { Trip } from '../lib/types';
 import { aaUrl, allowance, COUNTRIES, entriesFor, fallbackHint, isDomestic, onSite } from '../lib/visa';
 import { VisaCard } from './Visa';
 import { ConcurSyncButton, ConcurTag, ConcurTripCard } from './ConcurParts';
-import { editable } from '../lib/concur';
-import { compressImage, pickImages } from '../lib/images';
+import { editable, pagesOf } from '../lib/concur';
+import { ReceiptScanner } from './ReceiptScanner';
 
 const TRANSPORT: Record<Trip['transport'], string> = { auto: 'Privat-PKW', firmenwagen: 'Firmenwagen', flug: 'Flug', bahn: 'Bahn' };
 
@@ -43,6 +43,7 @@ function TripEditor({ param }: { param: string }) {
   const toast = useToast();
   const [t, setT] = useState<Trip | null>(null);
   const [newItem, setNewItem] = useState('');
+  const [scanFor, setScanFor] = useState<string | null>(null);
   const created = useRef(false);
 
   useEffect(() => {
@@ -169,13 +170,17 @@ function TripEditor({ param }: { param: string }) {
                 <select disabled={locked} value={x.category} onChange={(e) => upd({ category: e.target.value })}>{EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
                 <input type="number" disabled={locked} step="0.01" min={0} value={x.amount} onChange={(e) => upd({ amount: Number(e.target.value) })} aria-label="Betrag" />
                 <input disabled={locked} value={x.note ?? ''} placeholder="Notiz" onChange={(e) => upd({ note: e.target.value })} />
-                <button className={`receipt${x.receipt ? ' has' : ''}`} disabled={locked} title={x.receipt ? 'Belegfoto ersetzen' : 'Belegfoto aufnehmen'} aria-label="Belegfoto"
-                  onClick={async () => { const [f] = await pickImages(); if (f) { try { upd({ receipt: await compressImage(f, 2000, 0.82) }); } catch (e) { toast((e as Error).message); } } }}>
-                  {x.receipt ? <img src={x.receipt} alt="" /> : '📷'}</button>
+                <button className={`receipt${pagesOf(x).length ? ' has' : ''}`} disabled={locked} title={pagesOf(x).length ? 'Beleg-Scan bearbeiten' : 'Beleg scannen'} aria-label="Beleg scannen" onClick={() => setScanFor(x.id)}>
+                  {pagesOf(x).length ? <><img src={pagesOf(x)[0]} alt="" /><i>PDF{pagesOf(x).length > 1 ? ` ${pagesOf(x).length}` : ''}</i></> : '📷'}</button>
                 {x.concur ? <span className="sent" title="In Concur">✓</span> : <button className="icon" aria-label="Entfernen" onClick={() => set('expenses', t.expenses.filter((y) => y.id !== x.id))}>✕</button>}
               </div>
               );
             })}
+            {scanFor && (() => {
+              const x = t.expenses.find((y) => y.id === scanFor);
+              return x ? <ReceiptScanner pages={pagesOf(x)} title={`Beleg ${x.date} ${x.category}`} onClose={() => setScanFor(null)}
+                onSave={(pages) => set('expenses', t.expenses.map((y) => (y.id === x.id ? { ...y, receiptPages: pages, receipt: undefined } : y)))} /> : null;
+            })()}
             <button className="btn" onClick={() => set('expenses', [...t.expenses, { id: uid(), date: t.departure.slice(0, 10), category: 'Hotel', amount: 0 }])}>+ Beleg</button>
           </section>
         </div>

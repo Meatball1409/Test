@@ -163,7 +163,9 @@ export interface ServiceReport {
 
 export interface Expense {
   id: string; date: string; category: string; amount: number; note?: string;
-  /** Belegfoto (JPEG, verkleinert) */
+  /** Gescannte Belegseiten (JPEG, entzerrt und gefiltert) – werden als eine PDF gesendet */
+  receiptPages?: string[];
+  /** älteres Einzelfoto (wird wie eine Seite behandelt) */
   receipt?: string;
   /** SAP Concur: ID der Ausgabe und Stand der letzten Übertragung */
   concur?: { id: string; hash: string };
