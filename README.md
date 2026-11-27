@@ -61,6 +61,7 @@ TechDesk hat **keinen eigenen Server** und **keine eigene Benutzerverwaltung**. 
 (offline nutzbar); zwischen Handy und PC per Sicherungsdatei übertragen.
 Anmeldung und Konten bleiben vollständig bei der IT: In der SAP-FSM-App läuft TechDesk als Web Container und nutzt
 die FSM-Anmeldung des Technikers – siehe [docs/FSM_INTEGRATION.md](docs/FSM_INTEGRATION.md).
+SAP Concur (Reisekosten) wird über die Integrationsplattform der IT angebunden – siehe [docs/CONCUR_INTEGRATION.md](docs/CONCUR_INTEGRATION.md).
 
 ## Wichtige Hinweise
 

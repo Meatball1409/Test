@@ -8,6 +8,9 @@ import { DEFAULT_CHECKLIST, EXPENSE_CATEGORIES, tripCosts } from '../lib/travel'
 import type { Trip } from '../lib/types';
 import { aaUrl, allowance, COUNTRIES, entriesFor, fallbackHint, isDomestic, onSite } from '../lib/visa';
 import { VisaCard } from './Visa';
+import { ConcurSyncButton, ConcurTag, ConcurTripCard } from './ConcurParts';
+import { editable, pagesOf } from '../lib/concur';
+import { ReceiptScanner } from './ReceiptScanner';
 
 const TRANSPORT: Record<Trip['transport'], string> = { auto: 'Privat-PKW', firmenwagen: 'Firmenwagen', flug: 'Flug', bahn: 'Bahn' };
 
@@ -20,14 +23,14 @@ export default function Trips() {
   const past = trips.filter((t) => t.return.slice(0, 10) < today);
   const row = (t: Trip) => (
     <button key={t.id} className="card item" onClick={() => navigate('reisen', t.id)}>
-      <b>{t.title || t.destination || 'Reise'}</b>
+      <b>{t.title || t.destination || 'Reise'} <ConcurTag t={t} /></b>
       <span>{t.customer}{t.destination ? ` · ${t.destination}` : ''}</span>
       <small>{t.departure ? formatDateDE(t.departure.slice(0, 10)) : '?'} – {t.return ? formatDateDE(t.return.slice(0, 10)) : '?'} · {TRANSPORT[t.transport]} · Checkliste {t.checklist.filter((c) => c.done).length}/{t.checklist.length}</small>
     </button>
   );
   return (
     <>
-      <PageHeader title="Reiseplanung" actions={<button className="btn primary" onClick={() => navigate('reisen', 'neu')}>+ Neue Reise</button>} />
+      <PageHeader title="Reiseplanung" actions={<><ConcurSyncButton /><button className="btn primary" onClick={() => navigate('reisen', 'neu')}>+ Neue Reise</button></>} />
       {trips.length === 0 && <Empty>Noch keine Reisen. Plane Anreise, Hotel, Packliste und rechne Spesen & Verpflegungspauschalen automatisch.</Empty>}
       {upcoming.length > 0 && <><h2 className="h2">Anstehend</h2><div className="cards">{upcoming.map(row)}</div></>}
       {past.length > 0 && <><h2 className="h2">Vergangen</h2><div className="cards">{past.map(row)}</div></>}
@@ -40,6 +43,7 @@ function TripEditor({ param }: { param: string }) {
   const toast = useToast();
   const [t, setT] = useState<Trip | null>(null);
   const [newItem, setNewItem] = useState('');
+  const [scanFor, setScanFor] = useState<string | null>(null);
   const created = useRef(false);
 
   useEffect(() => {
@@ -157,20 +161,32 @@ function TripEditor({ param }: { param: string }) {
 
           <section className="card">
             <div className="card-head"><h2>Belege / Ausgaben</h2><button className="btn small" onClick={exportCsv}>CSV</button></div>
-            {t.expenses.map((x) => (
+            {t.expenses.map((x) => {
+              const upd = (patch: Partial<typeof x>) => set('expenses', t.expenses.map((y) => (y.id === x.id ? { ...y, ...patch } : y)));
+              const locked = !editable(t) && !!x.concur;
+              return (
               <div key={x.id} className="expense">
-                <input type="date" value={x.date} onChange={(e) => set('expenses', t.expenses.map((y) => (y.id === x.id ? { ...y, date: e.target.value } : y)))} />
-                <select value={x.category} onChange={(e) => set('expenses', t.expenses.map((y) => (y.id === x.id ? { ...y, category: e.target.value } : y)))}>{EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
-                <input type="number" step="0.01" min={0} value={x.amount} onChange={(e) => set('expenses', t.expenses.map((y) => (y.id === x.id ? { ...y, amount: Number(e.target.value) } : y)))} aria-label="Betrag" />
-                <input value={x.note ?? ''} placeholder="Notiz" onChange={(e) => set('expenses', t.expenses.map((y) => (y.id === x.id ? { ...y, note: e.target.value } : y)))} />
-                <button className="icon" aria-label="Entfernen" onClick={() => set('expenses', t.expenses.filter((y) => y.id !== x.id))}>✕</button>
+                <input type="date" disabled={locked} value={x.date} onChange={(e) => upd({ date: e.target.value })} />
+                <select disabled={locked} value={x.category} onChange={(e) => upd({ category: e.target.value })}>{EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+                <input type="number" disabled={locked} step="0.01" min={0} value={x.amount} onChange={(e) => upd({ amount: Number(e.target.value) })} aria-label="Betrag" />
+                <input disabled={locked} value={x.note ?? ''} placeholder="Notiz" onChange={(e) => upd({ note: e.target.value })} />
+                <button className={`receipt${pagesOf(x).length ? ' has' : ''}`} disabled={locked} title={pagesOf(x).length ? 'Beleg-Scan bearbeiten' : 'Beleg scannen'} aria-label="Beleg scannen" onClick={() => setScanFor(x.id)}>
+                  {pagesOf(x).length ? <><img src={pagesOf(x)[0]} alt="" /><i>PDF{pagesOf(x).length > 1 ? ` ${pagesOf(x).length}` : ''}</i></> : '📷'}</button>
+                {x.concur ? <span className="sent" title="In Concur">✓</span> : <button className="icon" aria-label="Entfernen" onClick={() => set('expenses', t.expenses.filter((y) => y.id !== x.id))}>✕</button>}
               </div>
-            ))}
+              );
+            })}
+            {scanFor && (() => {
+              const x = t.expenses.find((y) => y.id === scanFor);
+              return x ? <ReceiptScanner pages={pagesOf(x)} title={`Beleg ${x.date} ${x.category}`} onClose={() => setScanFor(null)}
+                onSave={(pages) => set('expenses', t.expenses.map((y) => (y.id === x.id ? { ...y, receiptPages: pages, receipt: undefined } : y)))} /> : null;
+            })()}
             <button className="btn" onClick={() => set('expenses', [...t.expenses, { id: uid(), date: t.departure.slice(0, 10), category: 'Hotel', amount: 0 }])}>+ Beleg</button>
           </section>
         </div>
 
         <aside className="preview">
+          <ConcurTripCard t={t} onChange={setT} />
           <div className="card sticky">
             <h2>Kostenübersicht</h2>
             <div className="form">
