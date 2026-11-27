@@ -159,7 +159,6 @@ export default function CalendarPage() {
 }
 
 function EventEditor({ ev, onClose }: { ev: CalendarEvent; onClose: () => void }) {
-  const st = useSettings();
   const fromFsm = ev.id.startsWith('fsm-');
   const [e, setE] = useState(ev);
   const [allDay, setAllDay] = useState(!ev.startTime);
@@ -201,8 +200,6 @@ function EventEditor({ ev, onClose }: { ev: CalendarEvent; onClose: () => void }
         <Field label="Ort / Adresse" wide><input disabled={fromFsm} value={e.location ?? ''} onChange={(x) => set('location', x.target.value)} />
           {e.location && <a className="link" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location)}`} target="_blank" rel="noreferrer">In Karten öffnen ↗</a>}</Field>
         <Field label="Notizen" wide><textarea rows={3} value={e.notes ?? ''} onChange={(x) => set('notes', x.target.value)} /></Field>
-        {!fromFsm && e.type === 'einsatz' && st.fsmMode !== 'aus' && <Field label="SAP FSM" wide hint="Legt beim nächsten Abgleich einen Einsatz in FSM an (Titel und Notizen). Die Terminplanung übernimmt die Disposition in FSM.">
-          <label className="check"><input type="checkbox" checked={!!e.fsm?.push} onChange={(x) => set('fsm', { ...e.fsm, push: x.target.checked || undefined })} /> In FSM anlegen</label></Field>}
       </div>
     </Modal>
   );

@@ -142,7 +142,8 @@ export function bridgeClient(bridge: FsmBridge, fetchFn: typeof fetch = (...a) =
     activities: async (from, to) => (await query<Row>((p) => activitiesQuery(p, from, to), ACTIVITY_DTOS)).map(rowToActivity),
     timeEfforts: async (from, to) => (await query<Row>((p) => effortsQuery(p, from, to), EFFORT_DTOS)).map(rowToEffort),
     // Termine, Verantwortliche und Status sind in FSM nicht von außen beschreibbar (Disposition / Abschluss in FSM)
-    saveActivity: (w) => save('ACTIVITY_SAVE', w.id ? { id: w.id, subject: w.subject, remarks: w.remarks ?? '' } : { subject: w.subject, type: 'ASSIGNMENT', remarks: w.remarks ?? '' }),
+    // Nur bestehende Einsätze ändern – anlegen ist Sache von Innendienst/Vorgesetzten in SAP
+    saveActivity: (w) => { if (!w.id) throw new Error('Einsätze werden in SAP angelegt'); return save('ACTIVITY_SAVE', { id: w.id, subject: w.subject, remarks: w.remarks ?? '' }); },
     async saveTimeEffort(w) {
       const task = (await taskIds())[w.task];
       const zone = tz();

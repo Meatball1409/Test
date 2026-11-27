@@ -110,13 +110,13 @@ export function FsmSettingsCard() {
             <option value="demo">Demo – Testdaten für Präsentationen</option>
             <option value="live" disabled={!insideFsm() && s.fsmMode !== 'live'}>Live – in der SAP-FSM-App{insideFsm() ? '' : ' (nur in FSM geöffnet)'}</option>
           </select>
-          <small>{s.fsmMode === 'demo' ? 'Zeigt den Abgleich in beide Richtungen: Einsätze und Zeiten aus FSM, eigene Zeiten, Einsätze und Berichte zurück an FSM. Alle Daten sind erfunden.' : s.fsmMode === 'live' ? 'Abgleich in beide Richtungen mit deiner FSM-Anmeldung und deinen FSM-Rechten – automatisch beim Öffnen. Kein TechDesk-Server, kein eigenes Konto.' : 'Die App arbeitet ohne FSM. Berichtstexte werden per Kopieren übertragen.'}</small>
+          <small>{s.fsmMode === 'demo' ? 'Zeigt den Abgleich in beide Richtungen: Einsätze und Zeiten aus FSM, eigene Zeiten, Notizen und Berichte zurück an FSM. Alle Daten sind erfunden.' : s.fsmMode === 'live' ? 'Abgleich in beide Richtungen mit deiner FSM-Anmeldung und deinen FSM-Rechten – automatisch beim Öffnen. Kein TechDesk-Server, kein eigenes Konto.' : 'Die App arbeitet ohne FSM. Berichtstexte werden per Kopieren übertragen.'}</small>
         </label>
       </div>
       {s.fsmMode !== 'aus' && <ul className="muted small fsm-rules">
         <li><b>Aus FSM:</b> Einsätze (Termine, Kunde, Maschine, Status) und deine Zeitbuchungen.</li>
-        <li><b>An FSM:</b> Zeiteinträge mit zugeordnetem Einsatz, Titel und Notizen von Einsätzen, neue Einsätze, Berichte als Anhang.</li>
-        <li><b>Bleibt in FSM:</b> Terminplanung durch die Disposition und der Abschluss des Auftrags.</li>
+        <li><b>An FSM:</b> Zeiteinträge mit zugeordnetem Einsatz, Titel und Notizen von Einsätzen, Berichte als Anhang.</li>
+        <li><b>Bleibt in SAP/FSM:</b> Anlegen und Planen der Aufträge (Innendienst, Vorgesetzte) und der Abschluss.</li>
       </ul>}
       {s.fsmMode !== 'aus' && <p className="muted small">Zuletzt abgeglichen: {last ? new Date(last).toLocaleString('de-DE') : 'noch nie'}</p>}
       <div className="row wrap">

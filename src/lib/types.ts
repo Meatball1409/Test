@@ -25,8 +25,8 @@ export interface CalendarEvent {
   machine?: string;
   notes?: string;
   tripId?: string;
-  /** SAP FSM: Herkunft bzw. „beim Abgleich in FSM anlegen“ */
-  fsm?: { code?: string; serviceCall?: string; equipment?: string; push?: boolean };
+  /** SAP FSM: Herkunft (Einsätze legen Innendienst/Vorgesetzte in SAP an, nie TechDesk) */
+  fsm?: { code?: string; serviceCall?: string; equipment?: string };
 }
 
 export type TimeKind = 'arbeit' | 'kunde' | 'reise' | 'bereitschaft' | 'urlaub' | 'krank' | 'gleittag';

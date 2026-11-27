@@ -70,8 +70,9 @@ describe('FSM JavaScript Bridge (ohne Server)', () => {
     await c.saveActivity({ id: 'A1', subject: 'Wartung', remarks: 'Teile bestellt' });
     const act = f.sent.filter((x) => x.command === 'ACTIVITY_SAVE').at(-1)!.payload;
     expect(act).toEqual({ id: 'A1', subject: 'Wartung', remarks: 'Teile bestellt' }); // keine Termine, kein Status
-    await c.saveActivity({ subject: 'Neu' });
-    expect(f.sent.filter((x) => x.command === 'ACTIVITY_SAVE').at(-1)!.payload).toMatchObject({ subject: 'Neu', type: 'ASSIGNMENT' });
+    // Einsätze anlegen ist nicht erlaubt (Innendienst/Vorgesetzte in SAP)
+    expect(() => c.saveActivity({ subject: 'Neu' } as never)).toThrow('in SAP angelegt');
+    expect(f.sent.filter((x) => x.command === 'ACTIVITY_SAVE')).toHaveLength(1);
     await c.sendReport({ activityId: 'A1', text: 'Grüße', html: '<p>ä</p>', fileName: 'Service_Report_X' });
     const att = f.sent.filter((x) => x.command === 'ATTACHMENT_ADD').map((x) => x.payload as { fileName: string; fileContent: string });
     expect(att.map((a) => a.fileName)).toEqual(['Service_Report_X.html', 'Service_Report_X_FSM.txt']);

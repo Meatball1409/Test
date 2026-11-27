@@ -3,8 +3,9 @@
  *
  * Regeln
  * - FSM bleibt führend für Termine (Disposition), Kunde, Adresse, Maschine und Status (Abschluss in FSM).
- * - TechDesk → FSM: Titel und Notizen von Einsätzen; neue Einsätze („in FSM anlegen“);
- *   Zeitbuchungen (Anlegen und Ändern) für Einträge, die einem Einsatz zugeordnet sind.
+ * - TechDesk → FSM: Titel und Notizen bestehender Einsätze; Zeitbuchungen (Anlegen und Ändern)
+ *   für Einträge, die einem Einsatz zugeordnet sind.
+ * - Einsätze werden NIE von TechDesk angelegt – das machen Innendienst und Vorgesetzte in SAP.
  * - Lokale Änderungen gehen vor: Was noch nicht übertragen ist bzw. in FSM noch nicht angekommen ist,
  *   wird beim Herunterladen nicht überschrieben.
  * - Löschen: Einträge, die in FSM verschwunden sind, werden lokal entfernt – aber nur, wenn sie
@@ -39,8 +40,7 @@ export function planPush(events: CalendarEvent[], times: TimeEntry[], st: SyncSt
   const ops: PushOp[] = [];
   for (const e of events) {
     const h = hashEvent(e);
-    if (isFsm(e.id)) { if (markOf(st, e.id, h).h !== h) ops.push({ kind: 'activity', localId: e.id, write: eventToActivity(e), hash: h }); }
-    else if (e.type === 'einsatz' && e.fsm?.push) ops.push({ kind: 'activity', localId: e.id, write: eventToActivity(e), hash: h });
+    if (isFsm(e.id) && markOf(st, e.id, h).h !== h) ops.push({ kind: 'activity', localId: e.id, write: { ...eventToActivity(e), id: e.id.slice(4) }, hash: h });
   }
   for (const t of times) {
     const w = entryToEffort(t);
@@ -48,8 +48,7 @@ export function planPush(events: CalendarEvent[], times: TimeEntry[], st: SyncSt
     const h = hashTime(t);
     if (!isFsm(t.id) || markOf(st, t.id, h).h !== h) ops.push({ kind: 'effort', localId: t.id, write: w, hash: h });
   }
-  // Neue Einsätze zuerst, damit Zeitbuchungen auf sie zeigen können
-  return ops.sort((a, b) => Number(a.kind === 'effort') - Number(b.kind === 'effort'));
+  return ops;
 }
 
 /** Nach erfolgreichem Senden: lokalen Datensatz ggf. auf die FSM-ID umschlüsseln und als „unterwegs“ merken */
