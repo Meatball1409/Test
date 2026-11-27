@@ -7,6 +7,7 @@ import { addDays, formatDateDE, isoWeek, MONTHS, startOfMonth, todayISO, uid, we
 import { halfDayName, holidayName, holidays, STATES } from '../lib/holidays';
 import { vacationSummary } from '../lib/time';
 import { fmtDays } from './Time';
+import { FsmSyncButton } from './FsmParts';
 import { fromIcs, toIcs } from '../lib/ics';
 import { EVENT_TYPES, type CalendarEvent, type EventType } from '../lib/types';
 
@@ -57,6 +58,7 @@ export default function CalendarPage() {
   return (
     <>
       <PageHeader title="Kalender" actions={<>
+        <FsmSyncButton what={{ calendar: true, times: false }} label="FSM-Einsätze" />
         <button className="btn" onClick={importIcs}>Import .ics</button>
         <button className="btn" onClick={exportIcs}>Export .ics</button>
         <button className="btn primary" onClick={() => setEdit(newEvent(selected))}>+ Termin</button>

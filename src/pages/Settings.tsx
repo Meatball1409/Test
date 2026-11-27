@@ -1,6 +1,7 @@
 import { Logo } from '../brand';
 import { cloudEnabled } from '../config';
 import AccountSection from './Account';
+import { FsmSettingsCard } from './FsmParts';
 import { download, Field, PageHeader, pickFile, useToast } from '../components';
 import { useEffect, useState } from 'react';
 import { db, exportAll, importAll, saveSettings, storageSelfTest, useSettings } from '../db';
@@ -113,6 +114,8 @@ export default function SettingsPage() {
             </Field>
           </div>
         </section>
+
+        <FsmSettingsCard />
 
         <section className="card">
           <h2>Daten &amp; Sicherung</h2>
