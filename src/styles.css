@@ -347,3 +347,9 @@ a.tag:hover { text-decoration: underline; }
 @media (max-width: 640px) { .hide-sm { display: none; } .tt td, .tt th { padding: .45rem .4rem; } }
 .sap-tag { font-size: .6rem; font-weight: 800; letter-spacing: .05em; background: var(--navy); color: #fff; border-radius: 4px; padding: 0 .3rem; margin-right: .35rem; vertical-align: 1px; }
 .result ul { margin: .3rem 0 .3rem 1.1rem; padding: 0; }
+
+.demo-banner { background: var(--warn-bg); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius: 12px; padding: .5rem .8rem; margin-bottom: 1rem; font-size: .85rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.demo-banner a { margin-left: auto; color: inherit; font-weight: 600; }
+.sap-tag.fsm { background: var(--accent); }
+.grid2 > *, .split > *, .cards > * { min-width: 0; }
+.card-head h2 { min-width: 0; overflow-wrap: anywhere; }

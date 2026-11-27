@@ -70,6 +70,7 @@ export interface Settings {
   separateSunHoliday: boolean; // Sonn-/Feiertagsstunden nicht ins Gleitzeitkonto, sondern separat (Auszahlung)
   nightStart: string;
   nightEnd: string;
+  fsmMode: 'aus' | 'demo' | 'live';
   nightSeparate: boolean; // Nachtstunden wie Überstunden: nicht ins Gleitzeitkonto, Auszahlung mit Zuschlag
   nightPct: number;
   overtimeStartBalance: number; // Minuten Übertrag
@@ -104,6 +105,7 @@ export const DEFAULT_SETTINGS: Settings = {
   separateSunHoliday: true,
   nightStart: '22:00',
   nightEnd: '06:00',
+  fsmMode: 'aus',
   nightSeparate: true,
   nightPct: 25,
   overtimeStartBalance: 0,
@@ -149,6 +151,7 @@ export interface ServiceReport {
   arrival?: string; // ISO-Datum Anreise
   departure?: string; // ISO-Datum Abreise
   summary?: ReportSummary;
+  fsm?: { activityId: string; code: string; sentAt?: string };
 }
 
 export interface Expense { id: string; date: string; category: string; amount: number; note?: string }

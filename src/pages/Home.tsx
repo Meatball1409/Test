@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { navigate } from '../App';
 import { Icon } from '../icons';
+import { FsmActivitiesCard } from './FsmParts';
 import { db, useSettings } from '../db';
 import { addDays, formatDateDE, isoWeek, todayISO, weekday, weekdayShort } from '../lib/dates';
 import { holidayName } from '../lib/holidays';
@@ -48,6 +49,8 @@ export default function Home() {
         <div className="kpi"><span className="kpi-ico"><Icon name="calendar" /></span><span>Termine</span><b>{events.length}</b><small>in den nächsten 14 Tagen</small></div>
         <div className="kpi"><span className="kpi-ico"><Icon name="plane" /></span><span>Reisen</span><b>{trips.length}</b><small>anstehend</small></div>
       </div>
+
+      <FsmActivitiesCard />
 
       <div className="grid2">
         <section className="card">

@@ -436,3 +436,28 @@ describe('SAP-Zeitnachweis importieren', () => {
     expect(entries.find((e) => e.date === '2026-10-01')).toMatchObject({ kind: 'urlaub', id: 'sap-2026-10-01-a' });
   });
 });
+
+import { activityToEvent, demoData, effortToEntry } from './fsm';
+describe('FSM-Anbindung (Demo + Abbildung)', () => {
+  const { activities, efforts } = demoData('2026-11-27');
+  it('Demo-Einsätze rund um heute, vergangene mit Zeitbuchungen', () => {
+    expect(activities.length).toBe(6);
+    expect(activities.filter((a) => a.status === 'CLOSED').length).toBe(4); // Freitag: Mo–Mi dieser Woche schon erledigt
+    expect(efforts.length).toBeGreaterThan(0);
+    expect(efforts.every((t) => t.start < '2026-11-27')).toBe(true);
+  });
+  it('Einsatz → Kalendertermin, Zeitbuchung → Abschnitt', () => {
+    const ev = activityToEvent(activities[2]);
+    expect(ev).toMatchObject({ id: 'fsm-DEMO003', type: 'einsatz', customer: 'Alpen Käse AG', startTime: '08:00' });
+    const te = effortToEntry(efforts[0], activities);
+    expect(te.id.startsWith('fsm-')).toBe(true);
+    expect(te.kind).toBe('reise');
+    expect(te.note).toMatch(/^FSM A-26/);
+  });
+  it('Demo-Zeiten ergeben plausible Tage (mit Lücke 12:00–12:45 als Pause)', () => {
+    const entries = efforts.map((t) => effortToEntry(t, activities));
+    const d = summarizeDay(entries[0].date, entries.filter((e) => e.date === entries[0].date), { ...DEFAULT_SETTINGS, travelFactor: 1 });
+    expect(d.worked / 60).toBe(10.25); // 06:30–17:30 mit 45 min Lücke
+    expect(d.breakDeducted).toBe(0);
+  });
+});

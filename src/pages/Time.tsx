@@ -7,6 +7,7 @@ import { addDays, endOfMonth, parseHours, formatDateDE, formatMinutes, MONTHS, s
 import { isDomestic } from '../lib/visa';
 import { printZeitnachweis } from './Zeitnachweis';
 import { SapImportDialog } from './SapImport';
+import { FsmSyncButton } from './FsmParts';
 import { balanceDate, breakLabel, creditedMinutes, dayWork, effectiveBreak, fmtHours, glzAccount, overtimeBalance, setBalanceAt, summarizeRange, vacationSummary, weeklySums, withCalendarVacation } from '../lib/time';
 import { TIME_KINDS, type TimeEntry, type TimeKind } from '../lib/types';
 
@@ -94,6 +95,7 @@ export default function TimePage() {
   return (
     <>
       <PageHeader title="Zeiterfassung" actions={<>
+        <FsmSyncButton what={{ calendar: true, times: true }} label="Zeiten aus FSM" />
         <button className="btn" onClick={() => setImportOpen(true)}>SAP-Zeitnachweis importieren</button>
         <button className="btn" onClick={exportPdf}>Zeitnachweis (PDF)</button>
         <button className="btn" onClick={exportCsv}>CSV</button>
@@ -133,7 +135,7 @@ export default function TimePage() {
                   <td>
                     {es.map((e) => (
                       <button key={e.id} className={'entry k-' + e.kind} onClick={() => (e.id.startsWith('cal-') ? navigate('kalender', e.date) : setEdit(e))}>
-                        {e.id.startsWith('sap-') && <span className="sap-tag">SAP</span>}{TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.customer ? ` · ${e.customer}` : ''}
+                        {e.id.startsWith('sap-') && <span className="sap-tag">SAP</span>}{e.id.startsWith('fsm-') && <span className="sap-tag fsm">FSM</span>}{TIME_KINDS[e.kind]}{e.start ? ` ${e.start}–${e.end ?? '…'}` : ''}{e.customer ? ` · ${e.customer}` : ''}
                       </button>
                     ))}
                     <button className="entry add" onClick={() => setEdit(newEntry(d.date))} aria-label={`Abschnitt am ${formatDateDE(d.date)} hinzufügen`}>+</button>

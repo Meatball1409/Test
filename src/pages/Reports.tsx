@@ -11,6 +11,8 @@ import { emptyReport, fileName, fsmText, missingFields, reportPages } from '../l
 import { fillTemplate, placeholders } from '../lib/templates';
 import type { NumberedItem, ServiceReport } from '../lib/types';
 import { printReport, ReportPreview } from './ReportDoc';
+import { FsmSendButton } from './FsmParts';
+import { cachedActivities } from '../fsmSync';
 
 const ASSIGNMENTS = ['Repair', 'Preventive maintenance', 'Commissioning', 'Installation', 'Training', 'Format change', 'Retrofit', 'Remote support', 'Inspection'];
 
@@ -58,8 +60,12 @@ function HeaderDialog({ initial, onClose, onSave }: { initial?: ServiceReport; o
   // Vorbelegung aus einem Kalender-Einsatz (#/berichte/neu?event=…)
   useEffect(() => {
     if (initial) return;
-    const evId = new URLSearchParams(routeParam().split('?')[1] ?? '').get('event');
-    if (evId) void db.events.get(evId).then((ev) => ev && setR((x) => ({ ...x, customer: ev.customer ?? '', site: ev.location ?? '', machineNumbers: ev.machine ?? '', topic: ev.title, arrival: ev.startDate, departure: ev.endDate })));
+    const q = new URLSearchParams(routeParam().split('?')[1] ?? '');
+    const evId = q.get('event'), fsmId = q.get('fsm') ?? (evId?.startsWith('fsm-') ? evId.slice(4) : null);
+    if (fsmId) {
+      // Kopf aus dem FSM-Einsatz: Kunde, Standort, Maschine, Zeitraum, Einsatznummer
+      void cachedActivities().then((acts) => { const a = acts.find((x) => x.id === fsmId); if (a) setR((x) => ({ ...x, customer: a.customer, site: a.address.split(',').pop()!.trim().replace(/^\d{5}\s*/, ''), machineNumbers: a.equipment.serial, equipment: a.equipment.name, topic: a.subject, arrival: a.start.slice(0, 10), departure: a.end.slice(0, 10), fsm: { activityId: a.id, code: a.code } })); });
+    } else if (evId) void db.events.get(evId).then((ev) => ev && setR((x) => ({ ...x, customer: ev.customer ?? '', site: ev.location ?? '', machineNumbers: ev.machine ?? '', topic: ev.title, arrival: ev.startDate, departure: ev.endDate })));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const set = <K extends keyof ServiceReport>(k: K, v: ServiceReport[K]) => setR((x) => ({ ...x, [k]: v }));
   const valid = r.customer.trim() && r.machineNumbers.trim() && r.arrival;
@@ -180,7 +186,9 @@ function ReportEditor({ id }: { id: string }) {
         <button className="btn primary" onClick={exportPdf}>PDF</button>
         <button className="btn" onClick={exportPptx}>PowerPoint</button>
         <CopyButton text={text} label="FSM-Text kopieren" className="btn" />
+        <FsmSendButton r={r} text={text} onSent={(x) => setR(x)} />
       </>} />
+      {r.fsm && <p className="muted small" style={{ marginTop: '-.6rem' }}>Verknüpft mit FSM-Einsatz <b>{r.fsm.code}</b>{r.fsm.sentAt ? ` · gesendet am ${new Date(r.fsm.sentAt).toLocaleString('de-DE')}` : ''}</p>}
       {busy && <p className="result warn">{busy}</p>}
 
       <div className="split">
