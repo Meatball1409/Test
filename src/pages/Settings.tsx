@@ -1,6 +1,4 @@
 import { Logo } from '../brand';
-import { cloudEnabled } from '../config';
-import AccountSection from './Account';
 import { FsmSettingsCard } from './FsmParts';
 import { download, Field, PageHeader, pickFile, useToast } from '../components';
 import { useEffect, useState } from 'react';
@@ -41,7 +39,6 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader title="Einstellungen" />
-      <AccountSection />
       <div className="grid2">
         <section className="card">
           <h2>Persönlich</h2>
@@ -119,7 +116,7 @@ export default function SettingsPage() {
 
         <section className="card">
           <h2>Daten &amp; Sicherung</h2>
-          <p className="muted">{cloudEnabled ? 'Deine Daten werden automatisch in deinem Konto gesichert. Zusätzlich kannst du hier eine eigene Sicherungsdatei herunterladen.' : 'Alle Daten liegen nur auf diesem Gerät (offline nutzbar). Mach regelmäßig eine Sicherung – damit überträgst du auch Daten zwischen Handy und PC.'}</p>
+          <p className="muted">Alle Daten liegen nur auf diesem Gerät (offline nutzbar). Es gibt keinen TechDesk-Server und kein TechDesk-Konto. Mach regelmäßig eine Sicherung – damit überträgst du auch Daten zwischen Handy und PC.</p>
           <div className="row wrap">
             <button className="btn primary" onClick={async () => download(`techdesk-backup-${todayISO()}.json`, await exportAll(), 'application/json')}>Sicherung herunterladen</button>
             <button className="btn" onClick={() => restore('merge')}>Sicherung zusammenführen</button>

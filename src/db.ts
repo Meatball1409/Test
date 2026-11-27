@@ -117,6 +117,9 @@ export async function exportSnippets(): Promise<string> {
 
 /** Einmalig: Bundesland auf Bayern setzen (alle Kollegen sind in Bayern angestellt). Ohne Schema-Änderung. */
 export async function migrateDefaults() {
+  // Reste der früheren Anmeldung/Server-Synchronisation entfernen (es gibt keinen TechDesk-Server mehr)
+  await db.meta.bulkDelete(['dek', 'hashes', 'initialized', 'lastPull', 'lastSync', 'owner']).catch(() => {});
+  try { Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k)); } catch { /* egal */ }
   if (await getMeta<boolean>('migrated-by')) return;
   const cur = await db.settings.get('main');
   if (cur && cur.state === 'BW') await db.settings.put({ ...cur, state: 'BY' });

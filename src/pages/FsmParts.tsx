@@ -2,11 +2,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { navigate } from '../App';
 import { useToast } from '../components';
-import { cloudEnabled } from '../config';
 import { db, getMeta, saveSettings, useSettings } from '../db';
 import { fsmClient, syncFsm } from '../fsmSync';
 import { formatDateDE, todayISO } from '../lib/dates';
 import type { FsmActivity } from '../lib/fsm';
+import { insideFsm } from '../lib/fsmBridge';
 import type { ServiceReport } from '../lib/types';
 
 export function useFsmActivities(): FsmActivity[] {
@@ -83,9 +83,9 @@ export function FsmSettingsCard() {
           <select value={s.fsmMode} onChange={(e) => saveSettings({ fsmMode: e.target.value as typeof s.fsmMode })}>
             <option value="aus">Aus</option>
             <option value="demo">Demo – Testdaten für Präsentationen</option>
-            <option value="live" disabled={!cloudEnabled}>Live – über TechDesk-Server{cloudEnabled ? '' : ' (noch nicht eingerichtet)'}</option>
+            <option value="live" disabled={!insideFsm() && s.fsmMode !== 'live'}>Live – in der SAP-FSM-App{insideFsm() ? '' : ' (nur in FSM geöffnet)'}</option>
           </select>
-          <small>{s.fsmMode === 'demo' ? 'Zeigt, wie die Anbindung funktioniert: Einsätze → Kalender, gebuchte Zeiten → Zeiterfassung, Bericht → FSM. Alle Daten sind erfunden.' : s.fsmMode === 'live' ? 'Einsätze und Zeiten kommen aus eurem FSM. Voraussetzung: Freigabe und API-Zugang durch die IT.' : 'Die App arbeitet ohne FSM. Berichtstexte werden per Kopieren übertragen.'}</small>
+          <small>{s.fsmMode === 'demo' ? 'Zeigt, wie die Anbindung funktioniert: Einsätze → Kalender, gebuchte Zeiten → Zeiterfassung, Bericht → FSM. Alle Daten sind erfunden.' : s.fsmMode === 'live' ? 'Einsätze und Zeiten kommen direkt aus FSM – mit deiner FSM-Anmeldung und deinen FSM-Rechten. Kein TechDesk-Server, kein eigenes Konto.' : 'Die App arbeitet ohne FSM. Berichtstexte werden per Kopieren übertragen.'}</small>
         </label>
       </div>
       {s.fsmMode !== 'aus' && <p className="muted small">Zuletzt abgeglichen: {last ? new Date(last).toLocaleString('de-DE') : 'noch nie'}</p>}
